@@ -1,59 +1,63 @@
 import streamlit as st
 import time
+from datetime import datetime
 
 # --- NASTAVENÍ STRÁNKY ---
-st.set_page_config(page_title="Můj AI Bot", layout="wide")
+st.set_page_config(page_title="Chytrý AI Bot", layout="wide")
 
-# Inicializace paměti (aby se zprávy nevymazaly při každém kliknutí)
 if "admin_notes" not in st.session_state:
-    st.session_state.admin_notes = ["Informace 1: Bot je v testovacím režimu."]
+    st.session_state.admin_notes = ["Dnes je krásný den a bot je připraven."]
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- LEVÁ ČÁST (SIDEBAR) ---
+# --- LEVÁ ČÁST ---
 with st.sidebar:
-    st.header("📌 Důležité informace")
-    # Zobrazení informací, které uvidí všichni
+    st.header("📌 Vaše vložené informace")
     for note in st.session_state.admin_notes:
         st.info(note)
     
     st.divider()
-    
-    # Skrytá sekce pro tebe (Admina)
-    heslo = st.text_input("Zadej heslo pro přidání zprávy", type="password")
-    if heslo == "mojeheslo":  # TOTO HESLO SI MŮŽEŠ ZMĚNIT
-        nova_zprava = st.text_area("Napiš novou informaci:")
-        if st.button("Uložit a zveřejnit"):
+    heslo = st.text_input("Admin heslo", type="password")
+    if heslo == "mojeheslo":
+        nova_zprava = st.text_area("Nová informace pro bota:")
+        if st.button("Uložit"):
             st.session_state.admin_notes.append(nova_zprava)
             st.rerun()
 
-# --- HLAVNÍ ČÁST (CHAT) ---
-st.title("🤖 Chatbot")
+# --- HLAVNÍ CHAT ---
+st.title("🤖 Inteligentní asistent")
 
-# Zobrazení historie zpráv
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Políčko pro dotaz uživatele
-if dotaz := st.chat_input("Zeptej se mě na něco..."):
+if dotaz := st.chat_input("Napiš zprávu..."):
     st.session_state.messages.append({"role": "user", "content": dotaz})
     with st.chat_message("user"):
         st.markdown(dotaz)
 
-    # Efekt přemýšlení
     with st.chat_message("assistant"):
-        with st.status("Přemýšlím a prohledávám tvoje informace...", expanded=True) as status:
-            time.sleep(3) # Tady bot "přemýšlí"
+        with st.status("Přemýšlím...", expanded=True) as status:
+            time.sleep(2)
             
-            # Kontrola souvislosti s tvými informacemi
-            vsechny_info = " ".join(st.session_state.admin_notes).lower()
-            if any(slovo in dotaz.lower() for slovo in vsechny_info.split()):
-                odpoved = f"Našel jsem souvislost s informacemi v levém panelu! K tvému dotazu '{dotaz}' mohu říct, že se to shoduje s mým nastavením."
+            # Logika pro speciální dotazy (datum atd.)
+            nizky_dotaz = dotaz.lower()
+            if "den" in nizky_dotaz or "datum" in nizky_dotaz or "čas" in nizky_dotaz:
+                odpoved = f"Dnes je {datetime.now().strftime('%A, %d. %m. %Y')}. Čas je {datetime.now().strftime('%H:%M')}."
+            
+            # Kontrola tvých informací vlevo
             else:
-                odpoved = "O tomto tématu v mých informacích nic není, zkus se zeptat na něco, co vidíš vlevo."
-            
-            status.update(label="Mám to!", state="complete", expanded=False)
+                nalezeno = False
+                for note in st.session_state.admin_notes:
+                    if any(slovo in note.lower() for slovo in nizky_dotaz.split() if len(slovo) > 3):
+                        odpoved = f"K tvému dotazu jsem v mých informacích našel toto: {note}"
+                        nalezeno = True
+                        break
+                
+                if not nalezeno:
+                    odpoved = "Omlouvám se, ale o tomto tématu nemám v levém panelu žádné informace a na internetu zatím nemohu vyhledávat bez API klíče."
+
+            status.update(label="Odpověď připravena!", state="complete", expanded=False)
         
         st.markdown(odpoved)
         st.session_state.messages.append({"role": "assistant", "content": odpoved})
