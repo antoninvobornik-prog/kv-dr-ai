@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 
 # ==============================================================================
-# 1. DESIGN A TMAVÝ REŽIM
+# 1. DESIGN
 # ==============================================================================
 st.set_page_config(page_title="Kvadr AI Asistent", layout="wide")
 
@@ -17,7 +17,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Načtení klíčů
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
@@ -26,8 +25,29 @@ except:
     st.stop()
 
 # ==============================================================================
-# 2. FUNKCE PRO DATA A AUTOMATICKÉ NAJITÍ MODELU
+# 2. CHYTRÁ DETEKCE MODELU
 # ==============================================================================
+@st.cache_resource
+def ziskej_funkcni_model():
+    """Zeptá se Googlu, jaké modely tento klíč skutečně může používat."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
+    try:
+        res = requests.get(url).json()
+        if "models" in res:
+            # Hledáme jakýkoliv model, který podporuje generateContent
+            for m in res["models"]:
+                if "generateContent" in m["supportedGenerationMethods"]:
+                    # Priorita pro Gemini 1.5 Flash, pokud existuje
+                    if "gemini-1.5-flash" in m["name"]:
+                        return m["name"]
+            # Pokud není flash, vezmeme první funkční model ze seznamu
+            return res["models"][0]["name"]
+    except:
+        pass
+    return "models/gemini-pro" # Poslední záchrana
+
+MODEL_NAME = ziskej_funkcni_model()
+
 def nacti_data():
     try:
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
@@ -36,28 +56,10 @@ def nacti_data():
     except:
         return pd.DataFrame(columns=['zprava', 'tajne'])
 
-@st.cache_resource
-def ziskej_spravnou_url():
-    """Najde funkční cestu k modelu Gemini přímo pro tvůj klíč."""
-    verze = ["v1beta", "v1"]
-    for v in verze:
-        url_test = f"https://generativelanguage.googleapis.com/{v}/models?key={API_KEY}"
-        try:
-            res = requests.get(url_test).json()
-            if "models" in res:
-                for m in res["models"]:
-                    if "gemini-1.5-flash" in m["name"] and "generateContent" in m["supportedGenerationMethods"]:
-                        return f"https://generativelanguage.googleapis.com/{v}/{m['name']}:generateContent?key={API_KEY}"
-        except:
-            continue
-    # Nouzový plán, pokud vyhledávání selže
-    return f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={API_KEY}"
-
 data = nacti_data()
-FINAL_URL = ziskej_spravnou_url()
 
 # ==============================================================================
-# 3. LEVÝ PANEL (SIDEBAR)
+# 3. SIDEBAR
 # ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
@@ -65,19 +67,19 @@ with st.sidebar:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
     st.divider()
-    heslo = st.text_input("Správa (heslo)", type="password")
+    heslo = st.text_input("Správa", type="password")
     if heslo == "mojeheslo":
-        st.success("Režim správce")
+        st.success(f"Aktivní model: {MODEL_NAME}") # Pro kontrolu
         if 'tajne' in data.columns:
             for t in data['tajne'].dropna():
                 st.warning(t)
 
 # ==============================================================================
-# 4. HLAVNÍ CHAT
+# 4. CHAT
 # ==============================================================================
 st.title("🤖 Kvadr AI Asistent")
-st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky ohledně Kvádru a ještě více!</p>", unsafe_allow_html=True)
-st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem; margin-top: 0px;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE S KVÁDREM NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
+st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem;'>Tvůj inteligentní průvodce projektem Kvadr!</p>", unsafe_allow_html=True)
+st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem;'>POZOR MOHU DĚLAT CHYBY!</p>", unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -92,9 +94,11 @@ if prompt := st.chat_input("Napiš svou otázku..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Hledám odpověď..."):
+        with st.spinner("Odpovídám..."):
             verejne = " ".join(data['zprava'].dropna().astype(str).tolist())
             tajne = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
+            
+            url_ai = f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={API_KEY}"
             
             payload = {
                 "contents": [{"parts": [{"text": f"INSTRUKCE: {tajne}\nINFO: {verejne}\nUživatel: {prompt}"}]}],
@@ -107,14 +111,14 @@ if prompt := st.chat_input("Napiš svou otázku..."):
             }
             
             try:
-                response = requests.post(FINAL_URL, json=payload)
+                response = requests.post(url_ai, json=payload)
                 res = response.json()
                 if 'candidates' in res:
                     odpoved = res['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(odpoved)
                     st.session_state.messages.append({"role": "assistant", "content": odpoved})
                 else:
-                    st.error("Problém s odpovědí AI:")
+                    st.error("Chyba vygenerování odpovědi.")
                     st.json(res)
             except Exception as e:
-                st.error(f"Chyba spojení: {e}")
+                st.error(f"Spojení selhalo: {e}")
