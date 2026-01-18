@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 
-# ==============================================================================
-# 1. DESIGN
-# ==============================================================================
+# 1. ZÁKLADNÍ NASTAVENÍ A DESIGN
 st.set_page_config(page_title="Kvadr AI Asistent", layout="wide")
 
 st.markdown("""
@@ -24,29 +22,19 @@ except:
     st.error("Chybí klíče v Secrets!")
     st.stop()
 
-# ==============================================================================
-# 2. CHYTRÁ DETEKCE MODELU (OPRAVENÁ)
-# ==============================================================================
+# 2. DETEKCE MODELU A DAT
 @st.cache_resource
 def ziskej_funkcni_model():
-    """Najde model, který umí generovat text a jmenuje se gemini."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
     try:
         res = requests.get(url).json()
         if "models" in res:
-            # FILTR: Chceme jen modely Gemini, které umí generovat obsah
-            modely = [m["name"] for m in res["models"] 
-                      if "gemini" in m["name"] and "generateContent" in m["supportedGenerationMethods"]]
-            
-            if modely:
-                # Priorita pro 1.5-flash, pokud je v seznamu
-                for m in modely:
-                    if "1.5-flash" in m:
-                        return m
-                return modely[0] # Jinak vezmi první dostupný Gemini
-    except:
-        pass
-    return "models/gemini-1.5-flash-latest" # Poslední záchrana
+            modely = [m["name"] for m in res["models"] if "gemini" in m["name"] and "generateContent" in m["supportedGenerationMethods"]]
+            for m in modely:
+                if "1.5-flash" in m: return m
+            return modely[0] if modely else "models/gemini-1.5-flash"
+    except: pass
+    return "models/gemini-1.5-flash"
 
 MODEL_NAME = ziskej_funkcni_model()
 
@@ -55,30 +43,29 @@ def nacti_data():
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1"
         return pd.read_csv(url)
-    except:
-        return pd.DataFrame(columns=['zprava', 'tajne'])
+    except: return pd.DataFrame(columns=['zprava', 'tajne'])
 
 data = nacti_data()
 
-# ==============================================================================
-# 3. SIDEBAR
-# ==============================================================================
+# 3. SIDEBAR S INFORMACEMI
 with st.sidebar:
     st.title("📌 Informace")
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
     st.divider()
+    if st.button("🗑️ Smazat historii chatu"):
+        st.session_state.messages = []
+        st.rerun()
+    st.divider()
     heslo = st.text_input("Správa", type="password")
     if heslo == "mojeheslo":
-        st.success(f"Používám model: {MODEL_NAME}")
+        st.success(f"Model: {MODEL_NAME}")
         if 'tajne' in data.columns:
             for t in data['tajne'].dropna():
                 st.warning(t)
 
-# ==============================================================================
-# 4. CHAT
-# ==============================================================================
+# 4. HLAVNÍ PLOCHA
 st.title("🤖 Kvadr AI Asistent")
 st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky!</p>", unsafe_allow_html=True)
 st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
@@ -101,9 +88,8 @@ if prompt := st.chat_input("Napiš svou otázku..."):
             tajne = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
             
             url_ai = f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={API_KEY}"
-            
             payload = {
-                "contents": [{"parts": [{"text": f"KONTEXT: {tajne} {verejne}\n\nUživatel: {prompt}"}]}],
+                "contents": [{"parts": [{"text": f"INSTRUKCE: {tajne}\nINFO: {verejne}\nUživatel: {prompt}"}]}],
                 "safetySettings": [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -119,8 +105,10 @@ if prompt := st.chat_input("Napiš svou otázku..."):
                     odpoved = res['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(odpoved)
                     st.session_state.messages.append({"role": "assistant", "content": odpoved})
+                elif 'error' in res and res['error']['code'] == 429:
+                    st.warning("⚠️ Jsem trochu přetížený. Počkej prosím pár sekund a zkus to znovu.")
                 else:
-                    st.error("Chyba vygenerování odpovědi.")
+                    st.error("AI narazila na problém.")
                     st.json(res)
-            except Exception as e:
-                st.error(f"Spojení selhalo: {e}")
+            except:
+                st.error("Spojení se nezdařilo.")
