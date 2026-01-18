@@ -11,14 +11,15 @@ try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     gsheet_url = st.secrets["GSHEET_URL"]
 except Exception:
-    st.error("Chyba: Zkontroluj, zda máš v Secrets GOOGLE_API_KEY a GSHEET_URL.")
+    st.error("Chyba v Secrets! Zkontroluj GOOGLE_API_KEY a GSHEET_URL.")
     st.stop()
 
-# 3. KONFIGURACE AI (VYNUCENÍ STABILNÍ VERZE)
-genai.configure(api_key=api_key)
+# 3. KONFIGURACE AI - VYNUCENÍ VERZE v1
+# Tady jsme přidali transport='rest', což často řeší chyby s verzemi
+genai.configure(api_key=api_key, transport='rest')
 
-# Zde je změna: specifikujeme přesně model, který tvůj klíč AIzaSyC4... podporuje
-model = genai.GenerativeModel('models/gemini-1.5-flash')
+# Definujeme model bez prefixu models/, knihovna si ho doplní sama správně
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 4. FUNKCE PRO TABULKU
 def nacti_data():
@@ -30,14 +31,17 @@ def nacti_data():
         return pd.DataFrame(columns=['zprava'])
 
 def uloz_data(nova_zprava):
-    s = Spread(gsheet_url)
-    df = nacti_data()
-    novy_radek = pd.DataFrame([[nova_zprava]], columns=['zprava'])
-    df = pd.concat([df, novy_radek], ignore_index=True)
-    s.df_to_sheet(df, index=False, sheet='List1', replace=True)
+    try:
+        s = Spread(gsheet_url)
+        df = nacti_data()
+        novy_radek = pd.DataFrame([[nova_zprava]], columns=['zprava'])
+        df = pd.concat([df, novy_radek], ignore_index=True)
+        s.df_to_sheet(df, index=False, sheet='List1', replace=True)
+    except Exception as e:
+        st.error(f"Chyba zápisu: {e}")
 
 # 5. DESIGN STRÁNKY
-st.title("🤖 KVÁDR AI Asistent")
+st.title("🤖 Tvůj AI Asistent")
 
 data = nacti_data()
 
@@ -55,7 +59,7 @@ with st.sidebar:
         nova_inf = st.text_area("Co si mám pamatovat navždy?")
         if st.button("Uložit navždy"):
             uloz_data(nova_inf)
-            st.success("Uloženo! Stránka se obnovuje...")
+            st.success("Uloženo!")
             st.rerun()
 
 # 6. CHAT
@@ -66,17 +70,17 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Zeptej se mě na cokoliv..."):
+if prompt := st.chat_input("Napiš něco..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    kontext = "Informace o majiteli: " + ", ".join(data['zprava'].astype(str).tolist())
+    kontext = "Kontext z tabulky: " + ", ".join(data['zprava'].astype(str).tolist())
     
     with st.chat_message("assistant"):
         try:
-            # Přímé generování bez zbytečných beta parametrů
-            response = model.generate_content(f"{kontext}\n\nUživatel: {prompt}")
+            # Přímé volání, které by už nemělo padat do v1beta
+            response = model.generate_content(f"{kontext}\n\nDotaz: {prompt}")
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
