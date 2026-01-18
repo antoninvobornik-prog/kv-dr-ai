@@ -25,26 +25,28 @@ except:
     st.stop()
 
 # ==============================================================================
-# 2. CHYTRÁ DETEKCE MODELU
+# 2. CHYTRÁ DETEKCE MODELU (OPRAVENÁ)
 # ==============================================================================
 @st.cache_resource
 def ziskej_funkcni_model():
-    """Zeptá se Googlu, jaké modely tento klíč skutečně může používat."""
+    """Najde model, který umí generovat text a jmenuje se gemini."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
     try:
         res = requests.get(url).json()
         if "models" in res:
-            # Hledáme jakýkoliv model, který podporuje generateContent
-            for m in res["models"]:
-                if "generateContent" in m["supportedGenerationMethods"]:
-                    # Priorita pro Gemini 1.5 Flash, pokud existuje
-                    if "gemini-1.5-flash" in m["name"]:
-                        return m["name"]
-            # Pokud není flash, vezmeme první funkční model ze seznamu
-            return res["models"][0]["name"]
+            # FILTR: Chceme jen modely Gemini, které umí generovat obsah
+            modely = [m["name"] for m in res["models"] 
+                      if "gemini" in m["name"] and "generateContent" in m["supportedGenerationMethods"]]
+            
+            if modely:
+                # Priorita pro 1.5-flash, pokud je v seznamu
+                for m in modely:
+                    if "1.5-flash" in m:
+                        return m
+                return modely[0] # Jinak vezmi první dostupný Gemini
     except:
         pass
-    return "models/gemini-pro" # Poslední záchrana
+    return "models/gemini-1.5-flash-latest" # Poslední záchrana
 
 MODEL_NAME = ziskej_funkcni_model()
 
@@ -69,7 +71,7 @@ with st.sidebar:
     st.divider()
     heslo = st.text_input("Správa", type="password")
     if heslo == "mojeheslo":
-        st.success(f"Aktivní model: {MODEL_NAME}") # Pro kontrolu
+        st.success(f"Používám model: {MODEL_NAME}")
         if 'tajne' in data.columns:
             for t in data['tajne'].dropna():
                 st.warning(t)
@@ -78,8 +80,8 @@ with st.sidebar:
 # 4. CHAT
 # ==============================================================================
 st.title("🤖 Kvadr AI Asistent")
-st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem;'>Tvůj inteligentní průvodce projektem Kvadr!</p>", unsafe_allow_html=True)
-st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem;'>POZOR MOHU DĚLAT CHYBY!</p>", unsafe_allow_html=True)
+st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky!</p>", unsafe_allow_html=True)
+st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -101,7 +103,7 @@ if prompt := st.chat_input("Napiš svou otázku..."):
             url_ai = f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={API_KEY}"
             
             payload = {
-                "contents": [{"parts": [{"text": f"INSTRUKCE: {tajne}\nINFO: {verejne}\nUživatel: {prompt}"}]}],
+                "contents": [{"parts": [{"text": f"KONTEXT: {tajne} {verejne}\n\nUživatel: {prompt}"}]}],
                 "safetySettings": [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
