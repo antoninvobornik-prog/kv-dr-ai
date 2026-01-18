@@ -5,16 +5,25 @@ from gspread_pandas import Spread
 
 st.set_page_config(page_title="Můj AI Asistent", layout="wide")
 
-# NAČTENÍ KLÍČŮ
+# 1. NASTAVENÍ KLÍČŮ (Opraveno na verzi v1)
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     gsheet_url = st.secrets["GSHEET_URL"]
-    genai.configure(api_key=api_key, transport='rest')
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # Tady vynutíme stabilní verzi v1
+    from google.generativeai import types
+    genai.configure(api_key=api_key)
+    
+    # Použijeme model gemini-1.5-flash ve verzi v1
+    model = genai.GenerativeModel(
+        model_name='gemini-1.5-flash',
+        generation_config={"api_version": "v1"} # Tady je ten trik!
+    )
 except Exception as e:
-    st.error(f"Kritická chyba v nastavení: {e}")
+    st.error(f"Chyba nastavení: {e}")
     st.stop()
 
+# 2. NAČTENÍ TABULKY
 def nacti_data():
     try:
         s = Spread(gsheet_url)
@@ -25,30 +34,26 @@ def nacti_data():
 st.title("🤖 Tvůj AI Asistent")
 data = nacti_data()
 
-# LEVÝ PANEL - Tenhle už teď nezmizí
+# LEVÝ PANEL (Sidebar)
 with st.sidebar:
-    st.header("📌 Trvalé informace")
+    st.header("📌 Paměť AI")
     if not data.empty:
         for zpr in data['zprava']:
             st.info(zpr)
     
     st.divider()
-    heslo = st.text_input("Zadej heslo (mojeheslo)", type="password")
+    heslo = st.text_input("Zadej: mojeheslo", type="password")
     if heslo == "mojeheslo":
-        nova_inf = st.text_area("Co si mám pamatovat?")
-        if st.button("Uložit do paměti"):
-            try:
-                s = Spread(gsheet_url)
-                df = nacti_data()
-                novy = pd.DataFrame([[str(nova_inf)]], columns=['zprava'])
-                df = pd.concat([df, novy], ignore_index=True)
-                s.df_to_sheet(df, index=False, sheet='List1', replace=True)
-                st.success("Uloženo!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Chyba tabulky: {e}")
+        nova_inf = st.text_area("Co si pamatovat?")
+        if st.button("Uložit"):
+            s = Spread(gsheet_url)
+            df = nacti_data()
+            novy = pd.DataFrame([[nova_inf]], columns=['zprava'])
+            df = pd.concat([df, novy], ignore_index=True)
+            s.df_to_sheet(df, index=False, sheet='List1', replace=True)
+            st.rerun()
 
-# CHAT
+# 3. CHAT
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -64,10 +69,11 @@ if prompt := st.chat_input("Napiš něco..."):
     with st.chat_message("assistant"):
         try:
             # Sestavení kontextu
-            kontext = "Tvoje znalosti: " + ", ".join(data['zprava'].astype(str).tolist()) if not data.empty else ""
+            kontext = "Tvoje trvalé znalosti: " + ", ".join(data['zprava'].astype(str).tolist()) if not data.empty else ""
+            # Volání modelu
             response = model.generate_content(f"{kontext}\n\nUživatel: {prompt}")
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"AI stále stávkuje: {e}")
-            st.info("Zkus ještě jednou Reboot v menu Streamlitu, pokud vidíš chybu 404.")
+            st.error(f"AI se stále nedaří: {e}")
+            st.info("Zkus v menu Streamlitu 'Reboot', pokud vidíš stále 404.")
