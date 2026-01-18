@@ -1,63 +1,64 @@
 import streamlit as st
 import time
 from datetime import datetime
+from duckduckgo_search import DDGS
 
-# --- NASTAVENÍ STRÁNKY ---
-st.set_page_config(page_title="Chytrý AI Bot", layout="wide")
+st.set_page_config(page_title="Chytrý Bot s vyhledáváním", layout="wide")
 
+# Inicializace paměti
 if "admin_notes" not in st.session_state:
-    st.session_state.admin_notes = ["Dnes je krásný den a bot je připraven."]
+    st.session_state.admin_notes = ["Vítejte! Přidejte sem informace přes heslo."]
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- LEVÁ ČÁST ---
+# --- LEVÁ ČÁST (ADMIN) ---
 with st.sidebar:
-    st.header("📌 Vaše vložené informace")
+    st.header("📌 Vaše data")
     for note in st.session_state.admin_notes:
         st.info(note)
     
     st.divider()
     heslo = st.text_input("Admin heslo", type="password")
     if heslo == "mojeheslo":
-        nova_zprava = st.text_area("Nová informace pro bota:")
+        nova_zprava = st.text_area("Nová informace:")
         if st.button("Uložit"):
             st.session_state.admin_notes.append(nova_zprava)
             st.rerun()
 
 # --- HLAVNÍ CHAT ---
-st.title("🤖 Inteligentní asistent")
+st.title("🤖 AI s připojením k internetu")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if dotaz := st.chat_input("Napiš zprávu..."):
+if dotaz := st.chat_input("Zeptej se mě na cokoliv..."):
     st.session_state.messages.append({"role": "user", "content": dotaz})
     with st.chat_message("user"):
         st.markdown(dotaz)
 
     with st.chat_message("assistant"):
-        with st.status("Přemýšlím...", expanded=True) as status:
-            time.sleep(2)
+        with st.status("Prohledávám web a vaše data...", expanded=True) as status:
+            time.sleep(1)
             
-            # Logika pro speciální dotazy (datum atd.)
-            nizky_dotaz = dotaz.lower()
-            if "den" in nizky_dotaz or "datum" in nizky_dotaz or "čas" in nizky_dotaz:
-                odpoved = f"Dnes je {datetime.now().strftime('%A, %d. %m. %Y')}. Čas je {datetime.now().strftime('%H:%M')}."
+            # 1. Kontrola tvých dat vlevo
+            vsechna_data = " ".join(st.session_state.admin_notes).lower()
+            if any(slovo in vsechna_data for slovo in dotaz.lower().split() if len(slovo) > 3):
+                odpoved = f"V mých informacích jsem našel shodu! Týká se to tohoto: " + [n for n in st.session_state.admin_notes if any(s in n.lower() for s in dotaz.lower().split())][0]
             
-            # Kontrola tvých informací vlevo
+            # 2. Pokud to v datech není, hledá na internetu
             else:
-                nalezeno = False
-                for note in st.session_state.admin_notes:
-                    if any(slovo in note.lower() for slovo in nizky_dotaz.split() if len(slovo) > 3):
-                        odpoved = f"K tvému dotazu jsem v mých informacích našel toto: {note}"
-                        nalezeno = True
-                        break
-                
-                if not nalezeno:
-                    odpoved = "Omlouvám se, ale o tomto tématu nemám v levém panelu žádné informace a na internetu zatím nemohu vyhledávat bez API klíče."
+                try:
+                    with DDGS() as ddgs:
+                        results = list(ddgs.text(dotaz, max_results=3))
+                        if results:
+                            odpoved = f"Na webu jsem o '{dotaz}' zjistil toto: \n\n" + results[0]['body']
+                        else:
+                            odpoved = "Bohužel jsem o tom nic nenašel ani na internetu."
+                except Exception as e:
+                    odpoved = "Omlouvám se, nastala chyba při vyhledávání na webu."
 
-            status.update(label="Odpověď připravena!", state="complete", expanded=False)
+            status.update(label="Hledání dokončeno!", state="complete", expanded=False)
         
         st.markdown(odpoved)
         st.session_state.messages.append({"role": "assistant", "content": odpoved})
