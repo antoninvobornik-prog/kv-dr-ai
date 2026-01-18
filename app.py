@@ -120,17 +120,14 @@ with st.sidebar:
 # HLAVNÍ NADPIS
 st.title("🤖 Kvadr AI Asistent")
 
-# PRVNÍ PODNADPIS (Bílý a zvýrazněný)
+# TVOJE NOVÉ PODNADPISY
 st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky ohledně Kvádru a ještě více!</p>", unsafe_allow_html=True)
-
-# DRUHÝ PODNADPIS / VAROVÁNÍ (Šedý a kurzíva)
 st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem; margin-top: 0px;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE S KVÁDREM NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
 
 # Historie chatu
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Zobrazení zpráv z historie
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -143,29 +140,30 @@ if prompt := st.chat_input("Napiš svou otázku..."):
 
     with st.chat_message("assistant"):
         with st.spinner("Přemýšlím..."):
-            # Příprava kontextu (Veřejné + Tajné informace)
             verejne_text = " ".join(data['zprava'].astype(str).tolist()) if not data.empty else ""
             tajne_text = ""
             if 'tajne' in data.columns:
                 tajne_text = " ".join(data['tajne'].astype(str).tolist())
             
-            # Sestavení dotazu pro AI
-            kontext = f"INSTRUKCE PRO TEBE: {tajne_text} | INFORMACE PRO VEŘEJNOST: {verejne_text}"
+            kontext = f"INSTRUKCE: {tajne_text} | INFO: {verejne_text}"
             url_ai = f"https://generativelanguage.googleapis.com/v1beta/{funkcni_model}:generateContent?key={API_KEY}"
-            payload = {
-                "contents": [{
-                    "parts": [{"text": f"{kontext}\n\nUživatel se ptá: {prompt}"}]
-                }]
-            }
+            payload = {"contents": [{"parts": [{"text": f"{kontext}\n\nUživatel: {prompt}"}]}]}
             
             try:
                 res = requests.post(url_ai, json=payload).json()
-                odpoved = res['candidates'][0]['content']['parts'][0]['text']
-                st.markdown(odpoved)
-                st.session_state.messages.append({"role": "assistant", "content": odpoved})
+                
+                # OPRAVA CHYBY 'candidates'
+                if 'candidates' in res and res['candidates'][0].get('content'):
+                    odpoved = res['candidates'][0]['content']['parts'][0]['text']
+                    st.markdown(odpoved)
+                    st.session_state.messages.append({"role": "assistant", "content": odpoved})
+                else:
+                    # Pokud AI odmítne odpovědět (třeba kvůli filtru)
+                    duvod = res.get('promptFeedback', {}).get('blockReason', 'Neznámý důvod (pravděpodobně bezpečnostní filtr Google)')
+                    st.warning(f"AI odmítla odpovědět. Důvod: {duvod}")
+                    
             except Exception as e:
-                st.error(f"AI se nepodařilo odpovědět. (Chyba: {e})")
-
+                st.error("Došlo k technické chybě při spojení s AI.")
 # ==============================================================================
 # KONEC KÓDU
 # ==============================================================================
