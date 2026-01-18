@@ -1,70 +1,113 @@
 import streamlit as st
+import google.generativeai as genai
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 import time
-from datetime import datetime
-from duckduckgo_search import DDGS
 
-st.set_page_config(page_title="Chytrý Bot", layout="wide")
+# --- 1. NASTAVENÍ AI (GEMINI) ---
+try:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error(f"Chyba nastavení AI: Zkontrolujte API klíč v Secrets. ({e})")
 
-if "admin_notes" not in st.session_state:
-    st.session_state.admin_notes = ["Bot je připraven."]
+# --- 2. NASTAVENÍ STRÁNKY ---
+st.set_page_config(page_title="Chytrý Bot s pamětí", layout="wide")
+
+# --- 3. PŘIPOJENÍ KE GOOGLE SHEETS ---
+# Vytvoření spojení
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Funkce pro načtení dat
+@st.cache_data(ttl=5) # Obnovuje data každých 5 sekund
+def load_data():
+    try:
+        # Načte tabulku z URL v Secrets
+        return conn.read(spreadsheet=st.secrets["GSHEET_URL"], worksheet="0")
+    except Exception as e:
+        st.error(f"Nepodařilo se načíst Google Tabulku: {e}")
+        return pd.DataFrame(columns=["zprava"])
+
+# Načtení dat do proměnné
+df = load_data()
+# Vyčištění dat od prázdných řádků
+admin_notes = df["zprava"].dropna().tolist() if "zprava" in df.columns else []
+
+# Paměť pro aktuální chat (smaže se po obnovení)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- LEVÁ ČÁST ---
+# --- 4. LEVÝ PANEL (ADMINISTRACE) ---
 with st.sidebar:
-    st.header("📌 Vaše data")
-    for note in st.session_state.admin_notes:
-        st.info(note)
+    st.header("📌 Trvalé informace")
+    
+    # Zobrazení uložených zpráv z tabulky
+    if not admin_notes:
+        st.write("V databázi zatím nejsou žádné zprávy.")
+    else:
+        for note in admin_notes:
+            st.info(note)
+    
     st.divider()
-    heslo = st.text_input("Admin heslo", type="password")
+    
+    # Sekce pro přidávání nových zpráv
+    heslo = st.text_input("Zadej heslo pro úpravy", type="password")
     if heslo == "mojeheslo":
-        nova_zprava = st.text_area("Nová informace:")
-        if st.button("Uložit"):
-            st.session_state.admin_notes.append(nova_zprava)
-            st.rerun()
+        nova_zprava = st.text_area("Napiš informaci, kterou si má bot pamatovat:")
+        if st.button("Uložit navždy"):
+            if nova_zprava:
+                try:
+                    # Vytvoření nového řádku
+                    new_row = pd.DataFrame([{"zprava": nova_zprava}])
+                    # Spojení se stávajícími daty
+                    updated_df = pd.concat([df, new_row], ignore_index=True)
+                    # Odeslání do Google Tabulky
+                    conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
+                    
+                    st.success("Uloženo do Google Tabulky!")
+                    st.cache_data.clear() # Vymaže mezipaměť, aby se data hned načetla
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Chyba při zápisu do tabulky: {e}")
+                    st.info("Tip: Máte v tabulce v buňce A1 nadpis 'zprava' a je tabulka sdílená jako Editor?")
+            else:
+                st.warning("Napište nějaký text.")
 
-# --- HLAVNÍ CHAT ---
-st.title("🤖 Normální AI")
+# --- 5. HLAVNÍ CHAT ---
+st.title("🤖 Tvůj AI Asistent")
+st.caption("Informace vlevo se berou z Google Tabulky a bot si je pamatuje navždy.")
 
+# Zobrazení historie chatu
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if dotaz := st.chat_input("Napiš zprávu..."):
-    st.session_state.messages.append({"role": "user", "content": dotaz})
+# Vstup pro uživatele
+if prompt := st.chat_input("Zeptej se mě na cokoliv..."):
+    # Přidání zprávy uživatele
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
-        st.markdown(dotaz)
+        st.markdown(prompt)
 
+    # Generování odpovědi AI
     with st.chat_message("assistant"):
-        with st.status("Přemýšlím...", expanded=True) as status:
-            time.sleep(1)
-            d = dotaz.lower()
+        with st.spinner("Přemýšlím..."):
+            # Složení kontextu pro AI z informací vlevo
+            kontext = "\n".join([str(n) for n in admin_notes])
             
-            # --- 1. LIDSKÉ POZDRAVY (Aby nepsal, že nic nenašel) ---
-            if d in ["ahoj", "čau", "dobrý den", "zdravím"]:
-                odpoved = "Ahoj! Jsem tvůj AI asistent. Můžeš se mě na cokoliv zeptat nebo se podívat na informace vlevo."
-            elif "jak se máš" in d:
-                odpoved = "Mám se skvěle, zrovna jsem promazal své obvody a jsem připraven ti pomoci!"
-            elif "kdo jsi" in d:
-                odpoved = "Jsem chatbot, kterého vytvořil Tonda. Umím číst informace vlevo a hledat na internetu."
+            plna_instrukce = f"""
+            Jsi užitečný asistent. Zde jsou důležité informace, které ti dal majitel:
+            {kontext}
             
-            # --- 2. KONTROLA TVÝCH DAT ---
-            elif any(slovo in " ".join(st.session_state.admin_notes).lower() for slovo in d.split() if len(slovo) > 3):
-                odpoved = "V mých datech jsem našel toto: " + [n for n in st.session_state.admin_notes if any(s in n.lower() for s in d.split())][0]
+            Uživatel se ptá: {prompt}
             
-            # --- 3. VYHLEDÁVÁNÍ NA WEBU ---
-            else:
-                try:
-                    with DDGS() as ddgs:
-                        results = list(ddgs.text(dotaz, max_results=3))
-                        if results:
-                            odpoved = results[0]['body']
-                        else:
-                            odpoved = "Bohužel jsem o tom nic nenašel v datech ani na webu."
-                except:
-                    odpoved = "Teď se mi nepodařilo připojit k internetu, zkus to prosím znovu."
-
-            status.update(label="Odpověď hotova!", state="complete", expanded=False)
-        
-        st.markdown(odpoved)
-        st.session_state.messages.append({"role": "assistant", "content": odpoved})
+            Odpověz přátelsky a česky. Pokud odpověď najdeš v informacích od majitele, použij je.
+            """
+            
+            try:
+                response = model.generate_content(plna_instrukce)
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+            except Exception as e:
+                st.error(f"AI se nepodařilo odpovědět: {e}")
