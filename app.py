@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
-import gspread
-from gspread_dataframe import get_as_dataframe, set_with_dataframe
+import time
 
-# 1. NASTAVENÍ
-st.set_page_config(page_title="Můj AI Asistent", layout="wide")
+# 1. ZÁKLADNÍ NASTAVENÍ
+st.set_page_config(page_title="Kvadr AI Asistent", layout="wide")
 
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
@@ -14,17 +13,31 @@ except:
     st.error("Chybí klíče v Secrets!")
     st.stop()
 
-# 2. PŘIPOJENÍ K TABULCE (Zjednodušeno bez JSONu)
+# 2. FUNKCE PRO TABULKU (ČTENÍ I ZÁPIS BEZ JSONu)
 def nacti_data():
     try:
-        # Připojení anonymně přes URL (tabulka musí být sdílená: "Všichni, kdo mají odkaz")
+        # Čtení tabulky přes CSV export
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1"
-        return pd.read_csv(url)
+        df = pd.read_csv(url)
+        return df
     except:
         return pd.DataFrame(columns=['zprava'])
 
-# 3. DIAGNOSTIKA MODELU
+def uloz_do_tabulky(novy_text):
+    """
+    Použijeme trik s Google Apps Scriptem nebo jednodušší metodu: 
+    V této verzi budeme data ukládat do dočasné paměti aplikace, 
+    protože plný zápis do Sheets bez JSONu vyžaduje Service Account.
+    """
+    if "local_data" not in st.session_state:
+        st.session_state.local_data = nacti_data()
+    
+    novy_radek = pd.DataFrame([[str(novy_text)]], columns=['zprava'])
+    st.session_state.local_data = pd.concat([st.session_state.local_data, novy_radek], ignore_index=True)
+    return True
+
+# 3. DIAGNOSTIKA MODELU (Vynucení funkční verze)
 @st.cache_resource
 def najdi_funkcni_model():
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
@@ -37,21 +50,37 @@ def najdi_funkcni_model():
     except:
         return "models/gemini-1.5-flash"
 
-# --- LOGIKA ---
-data = nacti_data()
+# --- HLAVNÍ LOGIKA ---
+if "local_data" not in st.session_state:
+    st.session_state.local_data = nacti_data()
+
 funkcni_model = najdi_funkcni_model()
 
-# SIDEBAR
+# SIDEBAR (LEVÝ PANEL)
 with st.sidebar:
     st.title("📌 Trvalá paměť")
-    if not data.empty and 'zprava' in data.columns:
-        for zpr in data['zprava'].dropna():
+    st.write("Informace pro AI:")
+    
+    # Zobrazení dat
+    if not st.session_state.local_data.empty:
+        for zpr in st.session_state.local_data['zprava'].dropna():
             st.info(zpr)
-    else:
-        st.caption("Tabulka je prázdná. Pro zápis je potřeba složitější nastavení, teď hlavně ať funguje čtení!")
+    
+    st.divider()
+    st.subheader("➕ Přidat informaci")
+    heslo = st.text_input("Zadej heslo (mojeheslo)", type="password")
+    if heslo == "mojeheslo":
+        nova_zprava = st.text_area("Co si mám pamatovat?")
+        if st.button("Uložit"):
+            if nova_zprava:
+                uloz_do_tabulky(nova_zprava)
+                st.success("Informace přidána!")
+                time.sleep(1)
+                st.rerun()
 
-# CHAT
-st.title("🤖 Kvádr AI Asistent")
+# HLAVNÍ CHAT
+st.title("🤖 Kvadr AI Asistent")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -65,7 +94,7 @@ if prompt := st.chat_input("Napiš něco..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        kontext = " ".join(data['zprava'].astype(str).tolist()) if not data.empty else ""
+        kontext = " ".join(st.session_state.local_data['zprava'].astype(str).tolist())
         url_ai = f"https://generativelanguage.googleapis.com/v1beta/{funkcni_model}:generateContent?key={API_KEY}"
         payload = {"contents": [{"parts": [{"text": f"Znalosti: {kontext}\n\nUživatel: {prompt}"}]}]}
         
@@ -75,4 +104,4 @@ if prompt := st.chat_input("Napiš něco..."):
             st.markdown(odpoved)
             st.session_state.messages.append({"role": "assistant", "content": odpoved})
         except:
-            st.error("AI selhala.")
+            st.error("AI selhala při generování.")
