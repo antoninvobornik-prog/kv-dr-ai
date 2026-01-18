@@ -9,27 +9,11 @@ st.set_page_config(page_title="Kvadr AI Asistent", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp {
-        background-color: #0e1117;
-        color: #fafafa;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #161b22;
-        border-right: 1px solid #30363d;
-    }
-    .stInfo {
-        background-color: #1f2937;
-        color: #e5e7eb;
-        border: 1px solid #3b82f6;
-    }
-    .stWarning {
-        background-color: #2d2d00;
-        color: #fef08a;
-        border: 1px solid #ca8a04;
-    }
-    h1, h2, h3 {
-        color: #ffffff !important;
-    }
+    .stApp { background-color: #0e1117; color: #fafafa; }
+    [data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
+    .stInfo { background-color: #1f2937; color: #e5e7eb; border: 1px solid #3b82f6; }
+    .stWarning { background-color: #2d2d00; color: #fef08a; border: 1px solid #ca8a04; }
+    h1, h2, h3 { color: #ffffff !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -42,47 +26,56 @@ except:
     st.stop()
 
 # ==============================================================================
-# 2. NAČÍTÁNÍ DAT Z TABULKY
+# 2. FUNKCE PRO DATA A AUTOMATICKÉ NAJITÍ MODELU
 # ==============================================================================
 def nacti_data():
     try:
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1"
-        df = pd.read_csv(url)
-        return df
+        return pd.read_csv(url)
     except:
         return pd.DataFrame(columns=['zprava', 'tajne'])
 
+@st.cache_resource
+def ziskej_spravnou_url():
+    """Najde funkční cestu k modelu Gemini přímo pro tvůj klíč."""
+    verze = ["v1beta", "v1"]
+    for v in verze:
+        url_test = f"https://generativelanguage.googleapis.com/{v}/models?key={API_KEY}"
+        try:
+            res = requests.get(url_test).json()
+            if "models" in res:
+                for m in res["models"]:
+                    if "gemini-1.5-flash" in m["name"] and "generateContent" in m["supportedGenerationMethods"]:
+                        return f"https://generativelanguage.googleapis.com/{v}/{m['name']}:generateContent?key={API_KEY}"
+        except:
+            continue
+    # Nouzový plán, pokud vyhledávání selže
+    return f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={API_KEY}"
+
 data = nacti_data()
+FINAL_URL = ziskej_spravnou_url()
 
 # ==============================================================================
 # 3. LEVÝ PANEL (SIDEBAR)
 # ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
-    
-    st.subheader("O projektu:")
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
-    
     st.divider()
-    
-    heslo_input = st.text_input("Správa (heslo)", type="password")
-    if heslo_input == "mojeheslo":
+    heslo = st.text_input("Správa (heslo)", type="password")
+    if heslo == "mojeheslo":
         st.success("Režim správce")
         if 'tajne' in data.columns:
             for t in data['tajne'].dropna():
                 st.warning(t)
-    else:
-        st.caption("Zadejte heslo pro tajné instrukce.")
 
 # ==============================================================================
-# 4. HLAVNÍ CHAT A DESIGN NADPISŮ
+# 4. HLAVNÍ CHAT
 # ==============================================================================
 st.title("🤖 Kvadr AI Asistent")
-
-# Tvůj specifický design
 st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky ohledně Kvádru a ještě více!</p>", unsafe_allow_html=True)
 st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem; margin-top: 0px;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE S KVÁDREM NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
 
@@ -100,12 +93,8 @@ if prompt := st.chat_input("Napiš svou otázku..."):
 
     with st.chat_message("assistant"):
         with st.spinner("Hledám odpověď..."):
-            # Příprava kontextu
             verejne = " ".join(data['zprava'].dropna().astype(str).tolist())
             tajne = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
-            
-            # OPRAVA: Používáme stabilnější verzi modelu v1
-            url_ai = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
             
             payload = {
                 "contents": [{"parts": [{"text": f"INSTRUKCE: {tajne}\nINFO: {verejne}\nUživatel: {prompt}"}]}],
@@ -118,16 +107,14 @@ if prompt := st.chat_input("Napiš svou otázku..."):
             }
             
             try:
-                # Změna z v1beta na v1 v URL může vyřešit chybu 404
-                response = requests.post(url_ai, json=payload)
+                response = requests.post(FINAL_URL, json=payload)
                 res = response.json()
-                
                 if 'candidates' in res:
                     odpoved = res['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(odpoved)
                     st.session_state.messages.append({"role": "assistant", "content": odpoved})
                 else:
-                    st.error("AI narazila na problém. Zde je detail:")
+                    st.error("Problém s odpovědí AI:")
                     st.json(res)
             except Exception as e:
                 st.error(f"Chyba spojení: {e}")
