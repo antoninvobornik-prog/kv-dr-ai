@@ -4,15 +4,21 @@ import pandas as pd
 from gspread_pandas import Spread
 
 # 1. NASTAVENÍ STRÁNKY
-st.set_page_config(page_title="Kvádr AI Asistent", layout="wide")
+st.set_page_config(page_title="Můj AI Asistent", layout="wide")
 
 # 2. NAČTENÍ KLÍČŮ ZE SECRETS
-api_key = st.secrets["GOOGLE_API_KEY"]
-gsheet_url = st.secrets["GSHEET_URL"]
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    gsheet_url = st.secrets["GSHEET_URL"]
+except Exception as e:
+    st.error("Chybí klíče v Secrets! Zkontroluj nastavení Streamlitu.")
+    st.stop()
 
 # 3. KONFIGURACE AI
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+# Použijeme stabilní verzi modelu
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 # 4. FUNKCE PRO TABULKU
 def nacti_data():
@@ -36,9 +42,10 @@ def uloz_data(nova_zprava):
 # 5. DESIGN STRÁNKY
 st.title("🤖 KVÁDR AI Asistent")
 
+data = nacti_data()
+
 with st.sidebar:
     st.header("📌 Trvalé informace")
-    data = nacti_data()
     if not data.empty:
         for zpr in data['zprava']:
             st.info(zpr)
@@ -70,11 +77,12 @@ if prompt := st.chat_input("Zeptej se mě na cokoliv..."):
     # Příprava kontextu z tabulky
     kontext_text = ""
     if not data.empty:
-        kontext_text = "Pamatuj si tyto důležité informace: " + ", ".join(data['zprava'].astype(str).tolist())
+        kontext_text = "Pamatuj si tyto důležité informace o majiteli: " + ", ".join(data['zprava'].astype(str).tolist())
     
     with st.chat_message("assistant"):
         try:
             full_prompt = f"{kontext_text}\n\nUživatel se ptá: {prompt}"
+            # Používáme nejstabilnější metodu generování
             response = model.generate_content(full_prompt)
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
