@@ -13,31 +13,18 @@ except:
     st.error("Chybí klíče v Secrets!")
     st.stop()
 
-# 2. FUNKCE PRO TABULKU (ČTENÍ I ZÁPIS BEZ JSONu)
+# 2. FUNKCE PRO TABULKU
 def nacti_data():
     try:
-        # Čtení tabulky přes CSV export
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
+        # Načteme celou tabulku (včetně sloupce 'tajne')
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1"
         df = pd.read_csv(url)
         return df
     except:
-        return pd.DataFrame(columns=['zprava'])
+        return pd.DataFrame(columns=['zprava', 'tajne'])
 
-def uloz_do_tabulky(novy_text):
-    """
-    Použijeme trik s Google Apps Scriptem nebo jednodušší metodu: 
-    V této verzi budeme data ukládat do dočasné paměti aplikace, 
-    protože plný zápis do Sheets bez JSONu vyžaduje Service Account.
-    """
-    if "local_data" not in st.session_state:
-        st.session_state.local_data = nacti_data()
-    
-    novy_radek = pd.DataFrame([[str(novy_text)]], columns=['zprava'])
-    st.session_state.local_data = pd.concat([st.session_state.local_data, novy_radek], ignore_index=True)
-    return True
-
-# 3. DIAGNOSTIKA MODELU (Vynucení funkční verze)
+# 3. DIAGNOSTIKA MODELU
 @st.cache_resource
 def najdi_funkcni_model():
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
@@ -50,36 +37,44 @@ def najdi_funkcni_model():
     except:
         return "models/gemini-1.5-flash"
 
-# --- HLAVNÍ LOGIKA ---
-if "local_data" not in st.session_state:
-    st.session_state.local_data = nacti_data()
-
+# --- LOGIKA ---
+data = nacti_data()
 funkcni_model = najdi_funkcni_model()
 
 # SIDEBAR (LEVÝ PANEL)
 with st.sidebar:
-    st.title("📌 Trvalá paměť")
-    st.write("Informace pro AI:")
+    st.title("📌 Informace")
     
-    # Zobrazení dat
-    if not st.session_state.local_data.empty:
-        for zpr in st.session_state.local_data['zprava'].dropna():
+    # VEŘEJNÉ INFORMACE (Vidí všichni)
+    st.subheader("Veřejné info:")
+    if not data.empty and 'zprava' in data.columns:
+        for zpr in data['zprava'].dropna():
             st.info(zpr)
     
     st.divider()
-    st.subheader("➕ Přidat informaci")
-    heslo = st.text_input("Zadej heslo (mojeheslo)", type="password")
+    
+    # SEKCE S HESLEM
+    heslo = st.text_input("Zadej heslo pro správu", type="password")
+    
     if heslo == "mojeheslo":
-        nova_zprava = st.text_area("Co si mám pamatovat?")
-        if st.button("Uložit"):
-            if nova_zprava:
-                uloz_do_tabulky(nova_zprava)
-                st.success("Informace přidána!")
-                time.sleep(1)
-                st.rerun()
+        st.success("Jsi přihlášen jako správce")
+        
+        # TAJNÉ INFORMACE (Vidí jen ten, kdo zná heslo)
+        st.subheader("🕵️ Tajné instrukce pro AI:")
+        if 'tajne' in data.columns:
+            for t in data['tajne'].dropna():
+                st.warning(t)
+        
+        st.caption("Tip: Pokud chceš upravovat, napiš to přímo do Google Tabulky do sloupce 'tajne'.")
+    else:
+        st.caption("Zadej heslo pro zobrazení tajných instrukcí.")
 
 # HLAVNÍ CHAT
-st.title("Kvádr AI Asistent")
+# Najdi tento řádek:
+st.title("🤖 Kvadr AI Asistent")
+
+# A hned pod něj přidej tento řádek:
+st.caption("Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže s odpověďmi v reálném čase.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -94,9 +89,16 @@ if prompt := st.chat_input("Napiš něco..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        kontext = " ".join(st.session_state.local_data['zprava'].astype(str).tolist())
+        # AI DOSTANE VŠE: Veřejné i Tajné informace
+        verejne_info = " ".join(data['zprava'].astype(str).tolist()) if not data.empty else ""
+        tajne_info = ""
+        if 'tajne' in data.columns:
+            tajne_info = " ".join(data['tajne'].astype(str).tolist())
+        
+        kontext = f"Veřejné info: {verejne_info} | Tajné instrukce: {tajne_info}"
+        
         url_ai = f"https://generativelanguage.googleapis.com/v1beta/{funkcni_model}:generateContent?key={API_KEY}"
-        payload = {"contents": [{"parts": [{"text": f"Znalosti: {kontext}\n\nUživatel: {prompt}"}]}]}
+        payload = {"contents": [{"parts": [{"text": f"{kontext}\n\nUživatel: {prompt}"}]}]}
         
         try:
             res = requests.post(url_ai, json=payload).json()
@@ -104,4 +106,4 @@ if prompt := st.chat_input("Napiš něco..."):
             st.markdown(odpoved)
             st.session_state.messages.append({"role": "assistant", "content": odpoved})
         except:
-            st.error("AI selhala při generování.")
+            st.error("AI selhala.")
