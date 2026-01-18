@@ -79,7 +79,7 @@ with st.sidebar:
                 st.rerun()
 
 # HLAVNÍ CHAT
-st.title("🤖 Kvadr AI Asistent")
+st.title("Kvádr AI Asistent")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
