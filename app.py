@@ -117,9 +117,14 @@ with st.sidebar:
 # 4. HLAVNÍ CHAT - ROZHRANÍ A LOGIKA
 # ==============================================================================
 
-# HLAVNÍ NADPIS A PODNADPIP
+# HLAVNÍ NADPIS
 st.title("🤖 Kvadr AI Asistent")
-st.caption("Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase.")
+
+# PRVNÍ PODNADPIS (Bílý a zvýrazněný)
+st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky ohledně Kvádru a ještě více!</p>", unsafe_allow_html=True)
+
+# DRUHÝ PODNADPIS / VAROVÁNÍ (Šedý a kurzíva)
+st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem; margin-top: 0px;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE S KVÁDREM NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
 
 # Historie chatu
 if "messages" not in st.session_state:
