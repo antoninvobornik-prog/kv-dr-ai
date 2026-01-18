@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
-import time
+import json
 
 # ==============================================================================
-# 1. DESIGN A TMAVÝ REŽIM (CSS)
+# 1. DESIGN A VZHLED (TMAVÝ REŽIM)
 # ==============================================================================
 st.set_page_config(page_title="Kvadr AI Asistent", layout="wide")
 
@@ -43,10 +43,11 @@ except:
     st.stop()
 
 # ==============================================================================
-# 2. FUNKCE PRO DATA A MODEL
+# 2. FUNKCE PRO DATA A AI MODEL
 # ==============================================================================
 
 def nacti_data():
+    """Načte data a vyčistí je od prázdných řádků."""
     try:
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1"
@@ -61,7 +62,7 @@ def najdi_funkcni_model():
     try:
         res = requests.get(url).json()
         for m in res.get("models", []):
-            if "generateContent" in m["name"]:
+            if "generateContent" in m["name"] and "gemini" in m["name"]:
                 return m["name"]
         return "models/gemini-1.5-flash"
     except:
@@ -78,7 +79,9 @@ with st.sidebar:
     
     st.subheader("O projektu:")
     if not data.empty and 'zprava' in data.columns:
-        for zpr in data['zprava'].dropna():
+        # Odstranění prázdných hodnot (NaN) před zobrazením
+        verejne_info = data['zprava'].dropna().tolist()
+        for zpr in verejne_info:
             st.info(zpr)
     
     st.divider()
@@ -87,19 +90,20 @@ with st.sidebar:
     if heslo_input == "mojeheslo":
         st.success("Režim správce")
         if 'tajne' in data.columns:
-            for t in data['tajne'].dropna():
+            tajne_info = data['tajne'].dropna().tolist()
+            for t in tajne_info:
                 st.warning(t)
     else:
         st.caption("Zadejte heslo pro tajné instrukce.")
 
 # ==============================================================================
-# 4. HLAVNÍ ROZHRANÍ (NADPISY A CHAT)
+# 4. HLAVNÍ CHAT A TEXTY
 # ==============================================================================
 
 st.title("🤖 Kvadr AI Asistent")
 
-# Tvůj specifický design nadpisů
-st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;'>Tvůj inteligentní průvodce organizací Kvadr, který ti pomůže v reálném čase odpovědět na otázky ohledně Kvádru a ještě více!</p>", unsafe_allow_html=True)
+# TVOJE SPECIFICKÉ NADPISY
+st.markdown("<p style='color: white; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;'>Tvůj inteligentní průvodce projektem Kvadr, který ti pomůže v reálném čase odpovědět na otázky ohledně Kvádru a ještě více!</p>", unsafe_allow_html=True)
 st.markdown("<p style='color: gray; font-style: italic; font-size: 0.9rem; margin-top: 0px;'>POZOR MOHU DĚLAT CHYBY A NĚKTERÉ INFORMACE S KVÁDREM NEMUSÍM ZNÁT !</p>", unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
@@ -115,14 +119,17 @@ if prompt := st.chat_input("Napiš svou otázku..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Odpovídám..."):
-            verejne = " ".join(data['zprava'].astype(str).tolist()) if not data.empty else ""
-            tajne = " ".join(data['tajne'].astype(str).tolist()) if not data.empty and 'tajne' in data.columns else ""
+        with st.spinner("Hledám odpověď..."):
+            # PŘÍPRAVA ČISTÉHO KONTEXTU (bez prázdných buněk)
+            verejne_text = " ".join(data['zprava'].dropna().astype(str).tolist()) if not data.empty else ""
+            tajne_text = ""
+            if not data.empty and 'tajne' in data.columns:
+                tajne_text = " ".join(data['tajne'].dropna().astype(str).tolist())
             
-            kontext = f"INSTRUKCE (TAJNÉ): {tajne} | INFO PRO VEŘEJNOST: {verejne}"
+            kontext = f"INSTRUKCE PRO TEBE: {tajne_text}\nINFORMACE PRO VEŘEJNOST: {verejne_text}"
+            
             url_ai = f"https://generativelanguage.googleapis.com/v1beta/{funkcni_model}:generateContent?key={API_KEY}"
             
-            # PAYLOAD SE ZRUŠENÝM OMEZENÍM
             payload = {
                 "contents": [{"parts": [{"text": f"{kontext}\n\nUživatel: {prompt}"}]}],
                 "safetySettings": [
@@ -130,17 +137,25 @@ if prompt := st.chat_input("Napiš svou otázku..."):
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-                ]
+                ],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1000
+                }
             }
             
             try:
-                res = requests.post(url_ai, json=payload).json()
-                if 'candidates' in res:
+                response = requests.post(url_ai, json=payload)
+                res = response.json()
+                
+                if 'candidates' in res and len(res['candidates']) > 0:
                     odpoved = res['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(odpoved)
                     st.session_state.messages.append({"role": "assistant", "content": odpoved})
                 else:
-                    st.warning("AI narazila na filtr i přes uvolněné nastavení.")
-                    st.write("Důvod:", res.get('promptFeedback', 'Neznámý'))
-            except:
-                st.error("Chyba spojení s AI.")
+                    st.warning("AI narazila na technický problém nebo filtr Google.")
+                    # Ladící okno pro tebe
+                    with st.expander("Klikni sem pro detail chyby (pro správce)"):
+                        st.write(res)
+            except Exception as e:
+                st.error(f"Chyba spojení s mozkem AI: {e}")
