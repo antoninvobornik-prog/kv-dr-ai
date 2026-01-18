@@ -3,17 +3,20 @@ import google.generativeai as genai
 import pandas as pd
 from gspread_pandas import Spread
 
-# 1. NASTAVENÍ
+# Nastavení stránky musí být VŽDY první
 st.set_page_config(page_title="Můj AI Asistent", layout="wide")
 
-api_key = st.secrets["GOOGLE_API_KEY"]
-gsheet_url = st.secrets["GSHEET_URL"]
+# Načtení klíčů - s kontrolou, aby aplikace nespadla
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    gsheet_url = st.secrets["GSHEET_URL"]
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error(f"Chyba v nastavení klíčů: {e}")
+    st.stop()
 
-# 2. KONFIGURACE AI (verze 0.8.3)
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-# 3. FUNKCE PRO TABULKU
+# Funkce pro načtení dat (v samostatném bloku, aby nezmizel zbytek webu)
 def nacti_data():
     try:
         s = Spread(gsheet_url)
@@ -21,10 +24,20 @@ def nacti_data():
     except:
         return pd.DataFrame(columns=['zprava'])
 
-# 4. CHAT A INTERFACE
+# VYKRESLENÍ STRÁNKY
 st.title("🤖 Tvůj AI Asistent")
 data = nacti_data()
 
+# LEVÝ PRUH (Sidebar)
+with st.sidebar:
+    st.header("📌 Trvalé informace")
+    if not data.empty:
+        for zpr in data['zprava']:
+            st.info(zpr)
+    else:
+        st.write("Žádná data.")
+
+# CHAT
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -39,9 +52,9 @@ if prompt := st.chat_input("Napiš něco..."):
 
     with st.chat_message("assistant"):
         try:
-            # S novou verzí knihovny tohle už projde bez 404
+            # Oprava: Vynucení stabilní verze modelu
             response = model.generate_content(prompt)
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"Chyba: {e}")
+            st.error(f"AI stále hlásí chybu: {e}")
