@@ -3,86 +3,75 @@ import pandas as pd
 import requests
 import base64
 
-# ==============================================================================
-# 1. NASTAVENÍ A VZHLED (DARK MODE + LOGO + POZADÍ)
-# ==============================================================================
+# --- 1. ZÁKLADNÍ NASTAVENÍ (JAKO PŘEDTÍM) ---
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
+# Název tvého souboru
 JMENO_SOUBORU = "pozadí.png.png"
 
-def inject_custom_css(image_file):
+# --- 2. PŘIDÁNÍ POZADÍ A STYLŮ (UPRAVENO PRO CELÉ LOGO) ---
+def add_bg_and_styles(image_file):
     try:
         with open(image_file, "rb") as f:
             data = f.read()
         bin_str = base64.b64encode(data).decode()
-        bg_image_css = f'url("data:image/png;base64,{bin_str}")'
-    except FileNotFoundError:
-        bg_image_css = "none"
-
-    st.markdown(f"""
-    <style>
-        /* 1. TVRDÝ TMAVÝ REŽIM A POZADÍ */
+        
+        st.markdown(f"""
+        <style>
+        /* Pozadí s celým logem (contain) */
         .stApp {{
-            background-color: #0e1117;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.85)), {bg_image_css};
-            background-size: contain; 
+            background-image: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("data:image/png;base64,{bin_str}");
+            background-size: contain;
             background-repeat: no-repeat;
             background-attachment: fixed;
-            background-position: center center;
+            background-position: center;
+            background-color: #0e1117;
         }}
-
-        /* 2. HLAVIČKA (LOGO + TEXT) V JEDNÉ LINCE */
-        .header-box {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 20px;
-        }}
-        .header-logo {{
-            width: 45px !important;
-            height: auto;
-        }}
-        .header-text-group {{
-            display: flex;
-            flex-direction: column;
-        }}
-        .header-text-group h1 {{
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 1.6rem !important;
-            color: #ffffff !important;
-        }}
-        .header-text-group p {{
-            margin: 0 !important;
-            color: #4facfe !important;
-            font-size: 0.8rem !important;
-            font-weight: bold;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-        }}
-
-        /* 3. OPRAVA TEXTŮ (BÍLÁ BARVA) */
-        h1, h2, h3, p, div, span, label, .stMarkdown {{
+        
+        /* Vynucení bílého textu a Dark Mode */
+        h1, h2, h3, p, span, div, .stMarkdown {{
             color: #ffffff !important;
         }}
         
-        /* 4. POSTUPNÍ PANEL (SIDEBAR) - KLASICKÝ STYL */
-        [data-testid="stSidebar"] {{
-            background-color: #111111;
+        /* Flexbox pro logo a nadpis v jedné řadě */
+        .custom-header {{
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
         }}
-    </style>
-    """, unsafe_allow_html=True)
+        .custom-header img {{
+            width: 50px;
+            height: auto;
+        }}
+        .custom-header div {{
+            display: flex;
+            flex-direction: column;
+        }}
+        .custom-header h1 {{
+            margin: 0 !important;
+            font-size: 1.8rem !important;
+        }}
+        .custom-header p {{
+            margin: 0 !important;
+            color: #4facfe !important;
+            font-weight: bold;
+            letter-spacing: 2px;
+            font-size: 0.8rem;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+    except:
+        pass
 
-inject_custom_css(JMENO_SOUBORU)
+add_bg_and_styles(JMENO_SOUBORU)
 
-# ==============================================================================
-# 2. DATA A KONFIGURACE AI (VERZE v1)
-# ==============================================================================
+# --- 3. LOGIKA DAT (PŮVODNÍ FUNKČNÍ) ---
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
 except:
-    st.error("Chybí API klíče v Secrets!")
+    st.error("Chybí klíče v Secrets!")
     st.stop()
 
 def nacti_data():
@@ -95,44 +84,36 @@ def nacti_data():
 
 data = nacti_data()
 
-# ==============================================================================
-# 3. POSTRANNÍ PANEL (SIDEBAR) - JAKO PŘEDTÍM
-# ==============================================================================
+# --- 4. POSTRANNÍ PANEL (PŮVODNÍ FUNKČNÍ STYL) ---
 with st.sidebar:
     st.title("📌 Informace")
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
     
-    st.divider()
     if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
 
-# ==============================================================================
-# 4. HLAVNÍ PLOCHA (LOGO + CHAT)
-# ==============================================================================
-
-# Načtení loga pro hlavičku (HTML cesta)
+# --- 5. HLAVNÍ ČÁST (LOGO + NADPIS V JEDNÉ LINCE) ---
 try:
     with open(JMENO_SOUBORU, "rb") as f:
-        logo_base64 = base64.b64encode(f.read()).decode()
-    logo_src = f"data:image/png;base64,{logo_base64}"
+        logo_data = base64.b64encode(f.read()).decode()
+    logo_html = f'data:image/png;base64,{logo_data}'
 except:
-    logo_src = ""
+    logo_html = ""
 
-# Vykreslení hlavičky
 st.markdown(f"""
-    <div class="header-box">
-        <img src="{logo_src}" class="header-logo">
-        <div class="header-text-group">
+    <div class="custom-header">
+        <img src="{logo_html}">
+        <div>
             <h1>KVÁDR</h1>
             <p>AI ASISTENT</p>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Logika Chatu
+# --- 6. CHAT (PŮVODNÍ FUNKČNÍ LOGIKA) ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -140,49 +121,29 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Zadejte dotaz pro KVÁDR..."):
+if prompt := st.chat_input("Napiš zprávu..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("KVÁDR přemýšlí..."):
-            v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
-            t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
-            
-            # --- VOLÁNÍ STABILNÍHO v1 MODELU ---
-            # Pokud gemini-1.5-flash v v1 stále hlásí chybu, znamená to, 
-            # že váš klíč vyžaduje v1beta. Zde je ale vynuceno v1.
-            model_name = "gemini-1.5-flash"
-            url_ai = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={API_KEY}"
-            
-            payload = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [{"text": f"Instrukce: {t_info}\nKontext: {v_info}\nUživatel: {prompt}"}]
-                    }
-                ]
-            }
-            
-            try:
-                response = requests.post(url_ai, json=payload)
-                res = response.json()
-                
-                if 'candidates' in res and len(res['candidates']) > 0:
-                    odpoved = res['candidates'][0]['content']['parts'][0]['text']
-                    st.markdown(odpoved)
-                    st.session_state.messages.append({"role": "assistant", "content": odpoved})
-                else:
-                    # Pokud v1 nezná model, zkusíme automaticky v1beta jako záchranu
-                    url_fallback = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
-                    res_fallback = requests.post(url_fallback, json=payload).json()
-                    
-                    if 'candidates' in res_fallback:
-                        odpoved = res_fallback['candidates'][0]['content']['parts'][0]['text']
-                        st.markdown(odpoved)
-                        st.session_state.messages.append({"role": "assistant", "content": odpoved})
-                    else:
-                        st.error(f"Chyba AI: {res.get('error', {}).get('message', 'Model není dostupný.')}")
-            except Exception as e:
-                st.error(f"Chyba spojení: {e}")
+        # Tady používáme tu verzi URL, která ti fungovala na úplném začátku
+        url_ai = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+        
+        v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
+        t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
+        
+        payload = {
+            "contents": [{"parts": [{"text": f"Instrukce: {t_info}\nInfo: {v_info}\nDotaz: {prompt}"}]}]
+        }
+        
+        try:
+            res = requests.post(url_ai, json=payload).json()
+            if 'candidates' in res:
+                odpoved = res['candidates'][0]['content']['parts'][0]['text']
+                st.markdown(odpoved)
+                st.session_state.messages.append({"role": "assistant", "content": odpoved})
+            else:
+                st.error("AI neodpovídá, zkontroluj nastavení.")
+        except:
+            st.error("Chyba spojení.")
