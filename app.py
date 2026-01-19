@@ -5,7 +5,7 @@ import time
 import base64
 
 # ==============================================================================
-# 1. KONFIGURACE A VYNUCENÍ TMAVÉHO REŽIMU
+# 1. KONFIGURACE A OPRAVA POZADÍ (ABY BYLO VIDĚT CELÉ LOGO)
 # ==============================================================================
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
@@ -14,7 +14,8 @@ JMENO_SOUBORU = "pozadí.png.png"
 
 def inject_custom_css(image_file):
     """
-    Funkce načte obrázek pro pozadí a vloží CSS pro tvrdý Dark Mode.
+    Načte obrázek a nastaví CSS tak, aby se logo vždy přizpůsobilo
+    obrazovce a nikdy se neořízlo (contain).
     """
     try:
         with open(image_file, "rb") as f:
@@ -24,57 +25,65 @@ def inject_custom_css(image_file):
     except FileNotFoundError:
         bg_image_css = "none"
 
-    # CSS STYLY PRO TMAVÝ REŽIM A METALICKÝ VZHLED
+    # --- ZMĚNA CSS PRO PERFEKTNÍ ZOBRAZENÍ LOGA ---
     st.markdown(f"""
     <style>
-        /* 1. Hlavní pozadí aplikace - tmavé s nádechem obrázku */
+        /* 1. Hlavní pozadí aplikace */
         .stApp {{
-            background-color: #0e1117;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), {bg_image_css};
-            background-size: cover;
+            background-color: #0e1117; /* Tmavá podkladová barva pro okraje */
+            
+            /* Dvě vrstvy: 1. Tmavý filtr (aby byl text čitelný), 2. Samotné logo */
+            background-image: 
+                linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.85)), 
+                {bg_image_css};
+            
+            /* KLÍČOVÁ ZMĚNA: 'contain' zajistí, že se obrázek zmenší tak, aby byl celý vidět */
+            background-size: contain; 
+            
+            background-repeat: no-repeat;
             background-attachment: fixed;
-            background-position: center;
+            background-position: center center;
         }}
 
-        /* 2. Vynucení bílého textu všude */
-        h1, h2, h3, p, div, span, label, .stMarkdown {{
+        /* 2. Vynucení bílého textu pro maximální kontrast */
+        h1, h2, h3, p, div, span, label, .stMarkdown, li {{
             color: #e0e0e0 !important;
         }}
 
-        /* 3. Boční panel (Sidebar) - tmavší šedá */
+        /* 3. Boční panel (Sidebar) - poloprůhledný, aby nerušil */
         [data-testid="stSidebar"] {{
-            background-color: #161b22;
+            background-color: rgba(22, 27, 34, 0.95);
             border-right: 1px solid #30363d;
         }}
 
-        /* 4. Vstupní pole (Chat input, text input) */
+        /* 4. Vstupní pole a tlačítka */
         .stTextInput input, .stChatInput textarea {{
-            background-color: #21262d !important;
+            background-color: #0d1117 !important;
             color: #ffffff !important;
             border: 1px solid #30363d !important;
         }}
         
-        /* 5. Tlačítka */
         button {{
             background-color: #238636 !important;
             color: white !important;
             border: none !important;
+            border-radius: 5px;
         }}
 
-        /* 6. Styl pro podnadpis AI ASISTENT */
+        /* 5. Styl pro podnadpis */
         .subtitle {{
-            color: #58a6ff !important; /* Světle modrá jako záře v logu */
+            color: #4facfe !important;
             font-size: 1.2rem;
             font-weight: bold;
             letter-spacing: 4px;
             text-transform: uppercase;
             margin-top: -15px;
-            text-shadow: 0px 0px 10px rgba(88, 166, 255, 0.5);
+            text-shadow: 0px 0px 10px rgba(79, 172, 254, 0.6);
         }}
     </style>
     """, unsafe_allow_html=True)
 
-# Aktivace stylů
+# Spuštění stylů
 inject_custom_css(JMENO_SOUBORU)
 
 # ==============================================================================
@@ -95,7 +104,7 @@ def nacti_data():
     except:
         return pd.DataFrame(columns=['zprava', 'tajne'])
 
-# Konstantní model (Gemini Flash je rychlý a levný)
+# Použijeme rychlý model
 MODEL_NAME = "models/gemini-1.5-flash"
 data = nacti_data()
 
@@ -116,23 +125,20 @@ with st.sidebar:
         st.rerun()
 
 # ==============================================================================
-# 4. HLAVNÍ ČÁST (LOGO A CHAT)
+# 4. HLAVNÍ ČÁST (LOGO V HLAVIČCE A CHAT)
 # ==============================================================================
 
-# Zde je úprava pro zobrazení CELÉHO loga
-# Poměr sloupců 0.25 (logo) : 0.75 (text) dává logu dost místa
-col_logo, col_text = st.columns([0.25, 0.75])
+# Logo v hlavičce (malé) + Nadpis
+col_logo, col_text = st.columns([0.2, 0.8])
 
 with col_logo:
     try:
-        # width=160 zajistí, že logo bude dostatečně velké a čitelné
-        st.image(JMENO_SOUBORU, width=160)
+        st.image(JMENO_SOUBORU, use_container_width=True)
     except:
         st.header("🤖")
 
 with col_text:
-    # Zarovnání textu vertikálně k logu
-    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
     st.title("KVÁDR")
     st.markdown('<p class="subtitle">AI ASISTENT</p>', unsafe_allow_html=True)
 
@@ -147,7 +153,7 @@ for msg in st.session_state.messages:
 
 # Vstup uživatele
 if prompt := st.chat_input("Zadejte instrukci pro KVÁDR systém..."):
-    # 1. Uložit a zobrazit dotaz uživatele
+    # 1. Uložit uživatele
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -158,14 +164,14 @@ if prompt := st.chat_input("Zadejte instrukci pro KVÁDR systém..."):
         full_response = ""
         
         with st.spinner("Analyzuji data..."):
-            # Příprava kontextu z tabulky
+            # Příprava kontextu
             verejne = " ".join(data['zprava'].dropna().astype(str).tolist())
             tajne = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
             
-            # Odeslání na Google Gemini API
+            # Volání Google AI
             url_ai = f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={API_KEY}"
             payload = {
-                "contents": [{"parts": [{"text": f"Jsi KVÁDR AI, inteligentní asistent. \nINTERNÍ DATA: {tajne}\nVEŘEJNÉ INFO: {verejne}\n\nUŽIVATEL: {prompt}"}]}]
+                "contents": [{"parts": [{"text": f"Jsi KVÁDR AI, asistent v projektu. \nINTERNÍ DATA: {tajne}\nVEŘEJNÉ INFO: {verejne}\n\nUŽIVATEL: {prompt}"}]}]
             }
             
             try:
@@ -180,6 +186,6 @@ if prompt := st.chat_input("Zadejte instrukci pro KVÁDR systém..."):
             except Exception as e:
                 message_placeholder.error(f"Chyba spojení: {str(e)}")
                 
-    # 3. Uložení odpovědi do historie
+    # 3. Uložení odpovědi
     if full_response:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
