@@ -3,14 +3,12 @@ import pandas as pd
 import requests
 import base64
 
-# --- 1. ZÁKLADNÍ NASTAVENÍ (JAKO PŘEDTÍM) ---
+# --- 1. NASTAVENÍ A DESIGN ---
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
-# Název tvého souboru
 JMENO_SOUBORU = "pozadí.png.png"
 
-# --- 2. PŘIDÁNÍ POZADÍ A STYLŮ (UPRAVENO PRO CELÉ LOGO) ---
-def add_bg_and_styles(image_file):
+def inject_styles(image_file):
     try:
         with open(image_file, "rb") as f:
             data = f.read()
@@ -18,60 +16,63 @@ def add_bg_and_styles(image_file):
         
         st.markdown(f"""
         <style>
-        /* Pozadí s celým logem (contain) */
+        /* Pozadí - contain (celé logo bez ořezu) */
         .stApp {{
-            background-image: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("data:image/png;base64,{bin_str}");
+            background-color: #0e1117;
+            background-image: linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.88)), url("data:image/png;base64,{bin_str}");
             background-size: contain;
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-position: center;
-            background-color: #0e1117;
         }}
         
-        /* Vynucení bílého textu a Dark Mode */
-        h1, h2, h3, p, span, div, .stMarkdown {{
+        /* Vynucení bílého textu */
+        h1, h2, h3, p, span, div, .stMarkdown, label {{
             color: #ffffff !important;
         }}
-        
-        /* Flexbox pro logo a nadpis v jedné řadě */
-        .custom-header {{
+
+        /* FIX HLAVIČKY: Logo a název VŽDY vedle sebe */
+        .header-container {{
             display: flex;
+            flex-direction: row;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
             margin-bottom: 20px;
         }}
-        .custom-header img {{
-            width: 50px;
+        .header-container img {{
+            width: 45px !important;
             height: auto;
         }}
-        .custom-header div {{
+        .header-container div {{
             display: flex;
             flex-direction: column;
         }}
-        .custom-header h1 {{
+        .header-container h1 {{
             margin: 0 !important;
-            font-size: 1.8rem !important;
+            font-size: 1.7rem !important;
+            line-height: 1.1 !important;
         }}
-        .custom-header p {{
+        .header-container p {{
             margin: 0 !important;
             color: #4facfe !important;
             font-weight: bold;
             letter-spacing: 2px;
-            font-size: 0.8rem;
+            font-size: 0.8rem !important;
+            text-transform: uppercase;
         }}
         </style>
         """, unsafe_allow_html=True)
     except:
         pass
 
-add_bg_and_styles(JMENO_SOUBORU)
+inject_styles(JMENO_SOUBORU)
 
-# --- 3. LOGIKA DAT (PŮVODNÍ FUNKČNÍ) ---
+# --- 2. DATA (PŮVODNÍ FUNKČNÍ) ---
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
 except:
-    st.error("Chybí klíče v Secrets!")
+    st.error("⚠️ Chybí klíče v Secrets!")
     st.stop()
 
 def nacti_data():
@@ -84,28 +85,29 @@ def nacti_data():
 
 data = nacti_data()
 
-# --- 4. POSTRANNÍ PANEL (PŮVODNÍ FUNKČNÍ STYL) ---
+# --- 3. POSTRANNÍ PANEL (PŮVODNÍ STYL) ---
 with st.sidebar:
     st.title("📌 Informace")
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
     
+    st.divider()
     if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
 
-# --- 5. HLAVNÍ ČÁST (LOGO + NADPIS V JEDNÉ LINCE) ---
+# --- 4. HLAVNÍ HLAVIČKA ---
 try:
     with open(JMENO_SOUBORU, "rb") as f:
         logo_data = base64.b64encode(f.read()).decode()
-    logo_html = f'data:image/png;base64,{logo_data}'
+    logo_src = f'data:image/png;base64,{logo_data}'
 except:
-    logo_html = ""
+    logo_src = ""
 
 st.markdown(f"""
-    <div class="custom-header">
-        <img src="{logo_html}">
+    <div class="header-container">
+        <img src="{logo_src}">
         <div>
             <h1>KVÁDR</h1>
             <p>AI ASISTENT</p>
@@ -113,7 +115,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 6. CHAT (PŮVODNÍ FUNKČNÍ LOGIKA) ---
+# --- 5. CHAT A AI LOGIKA ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -121,13 +123,13 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Napiš zprávu..."):
+if prompt := st.chat_input("Napište zprávu pro KVÁDR..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Tady používáme tu verzi URL, která ti fungovala na úplném začátku
+        # Zkusíme v1beta, která je pro Flash nejčastější
         url_ai = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
         
         v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
@@ -138,12 +140,18 @@ if prompt := st.chat_input("Napiš zprávu..."):
         }
         
         try:
-            res = requests.post(url_ai, json=payload).json()
-            if 'candidates' in res:
+            response = requests.post(url_ai, json=payload)
+            res = response.json()
+            
+            if 'candidates' in res and len(res['candidates']) > 0:
                 odpoved = res['candidates'][0]['content']['parts'][0]['text']
                 st.markdown(odpoved)
                 st.session_state.messages.append({"role": "assistant", "content": odpoved})
             else:
-                st.error("AI neodpovídá, zkontroluj nastavení.")
-        except:
-            st.error("Chyba spojení.")
+                # ZOBRAZENÍ CHYBY PRO DIAGNOSTIKU
+                if 'error' in res:
+                    st.error(f"Chyba od Google: {res['error']['message']}")
+                else:
+                    st.error("AI neodpovídá. Zkuste to znovu za chvíli.")
+        except Exception as e:
+            st.error(f"Chyba spojení: {e}")
