@@ -4,7 +4,7 @@ import google.generativeai as genai
 import base64
 
 # ==============================================================================
-# 1. DESIGN A VZHLED (TVŮJ STYL, FIXNÍ LOGO)
+# 1. DESIGN A VZHLED (TVŮJ STYL + HEZČÍ BUBLINY A STRANY)
 # ==============================================================================
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
@@ -26,11 +26,44 @@ def inject_styles(image_file):
             background-position: center;
         }}
         h1, h2, h3, p, span, div, .stMarkdown, label {{ color: #ffffff !important; }}
+        
+        /* HLAVIČKA */
         .header-container {{ display: flex; flex-direction: row; align-items: center; gap: 12px; padding-bottom: 20px; }}
         .header-container img {{ width: 45px !important; height: auto; }}
         .header-container h1 {{ margin: 0 !important; font-size: 1.8rem !important; }}
         .header-container p {{ margin: 0 !important; color: #4facfe !important; font-weight: bold; letter-spacing: 2px; font-size: 0.8rem !important; }}
+        
+        /* SIDEBAR */
         [data-testid="stSidebar"] {{ background-color: #111111; }}
+
+        /* STYLING CHATU - BUBLINY A STRANY */
+        /* Zarovnání uživatele doprava */
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageContent"]):nth-child(even),
+        div[data-testid="stChatMessage"] {{
+            flex-direction: row;
+        }}
+        
+        /* Specifické úpravy pro uživatelskou zprávu (člověk) */
+        div[data-testid="stChatMessage"]:has(img[alt="user"]),
+        div[data-testid="stChatMessage"]:nth-child(even) {{
+            flex-direction: row-reverse !important;
+            text-align: right;
+        }}
+
+        /* Bublina */
+        div[data-testid="stChatMessageContent"] {{
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px !important;
+            padding: 10px 15px !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }}
+
+        /* Odlišení barvy bubliny uživatele */
+        div[data-testid="stChatMessage"]:has(img[alt="user"]) div[data-testid="stChatMessageContent"] {{
+            background-color: rgba(79, 172, 254, 0.1) !important;
+            border: 1px solid rgba(79, 172, 254, 0.3);
+        }}
         </style>
         """, unsafe_allow_html=True)
     except: pass
@@ -38,7 +71,7 @@ def inject_styles(image_file):
 inject_styles(JMENO_SOUBORU)
 
 # ==============================================================================
-# 2. NAČTENÍ DAT (PŮVODNÍ FUNKČNÍ LOGIKA)
+# 2. NAČTENÍ DAT
 # ==============================================================================
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
@@ -59,7 +92,7 @@ def nacti_data():
 data = nacti_data()
 
 # ==============================================================================
-# 3. SIDEBAR (PŮVODNÍ KLASICKÝ)
+# 3. SIDEBAR
 # ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
@@ -72,7 +105,7 @@ with st.sidebar:
         st.rerun()
 
 # ==============================================================================
-# 4. HLAVIČKA (LOGO VLEVO, TEXT VPRAVO)
+# 4. HLAVIČKA
 # ==============================================================================
 try:
     with open(JMENO_SOUBORU, "rb") as f:
@@ -88,7 +121,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 5. CHAT A INTELIGENTNÍ VOLÁNÍ AI (BEZCHYBNÉ)
+# 5. CHAT A INTELIGENTNÍ VOLÁNÍ AI
 # ==============================================================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -108,17 +141,9 @@ if prompt := st.chat_input("Zadejte dotaz..."):
             t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
             full_prompt = f"Instrukce: {t_info}\nData: {v_info}\nUživatel: {prompt}"
             
-            # --- DETEKCE FUNKČNÍHO MODELU ---
             try:
-                # Zkusíme najít jakýkoliv model, který podporuje generování textu
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                
-                # Prioritní modely (seřazeno od nejlepších)
-                preferred = [
-                    'models/gemini-1.5-flash-latest', 
-                    'models/gemini-1.5-flash', 
-                    'models/gemini-pro'
-                ]
+                preferred = ['models/gemini-1.5-flash-latest', 'models/gemini-1.5-flash', 'models/gemini-pro']
                 
                 target_model = None
                 for p in preferred:
@@ -127,19 +152,17 @@ if prompt := st.chat_input("Zadejte dotaz..."):
                         break
                 
                 if not target_model and available_models:
-                    target_model = available_models[0] # Pokud není v seznamu, vem první dostupný
+                    target_model = available_models[0]
                 
                 if target_model:
                     model = genai.GenerativeModel(target_model)
                     response = model.generate_content(full_prompt)
-                    
                     if response.text:
                         st.markdown(response.text)
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
                     else:
                         st.error("AI vrátilo prázdný výsledek.")
                 else:
-                    st.error("Ve vašem Google projektu nebyly nalezeny žádné podporované AI modely.")
-                    
+                    st.error("Nenalezen žádný model.")
             except Exception as e:
                 st.error(f"Kritická chyba: {str(e)}")
