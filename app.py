@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-import requests
+import google.generativeai as genai
 import base64
 
-# --- 1. DESIGN (BEZ ZMĚN V LOGICE) ---
+# --- 1. DESIGN (BEZ ZMĚN, TVŮJ STYL) ---
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
 JMENO_SOUBORU = "pozadí.png.png"
@@ -35,10 +35,12 @@ def inject_styles(image_file):
 
 inject_styles(JMENO_SOUBORU)
 
-# --- 2. DATA (TVÁ PŮVODNÍ FUNKČNÍ LOGIKA) ---
+# --- 2. DATA A KONFIGURACE AI (OFICIÁLNÍ KNIHOVNA) ---
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
+    # Inicializace Google AI
+    genai.configure(api_key=API_KEY)
 except:
     st.error("Chybí API klíče v Secrets!")
     st.stop()
@@ -76,7 +78,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 5. CHAT A ROBUSTNÍ VOLÁNÍ MODELŮ ---
+# --- 5. CHAT A AI POMOCÍ SDK ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -90,37 +92,28 @@ if prompt := st.chat_input("Zadejte dotaz..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
-        t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
-        payload = {"contents": [{"parts": [{"text": f"Instrukce: {t_info}\nData: {v_info}\nDotaz: {prompt}"}]}]}
-        
-        # TADY JSOU VŠECHNY MOŽNÉ KOMBINACE, KTERÉ GOOGLE POUŽÍVÁ
-        test_urls = [
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={API_KEY}",
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}",
-            f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}",
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}",
-            f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={API_KEY}"
-        ]
-        
-        success = False
-        last_error = ""
-        
-        for url in test_urls:
+        with st.spinner("KVÁDR přemýšlí..."):
+            v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
+            t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
+            
             try:
-                response = requests.post(url, json=payload, timeout=10)
-                res = response.json()
-                if 'candidates' in res:
-                    odpoved = res['candidates'][0]['content']['parts'][0]['text']
-                    st.markdown(odpoved)
-                    st.session_state.messages.append({"role": "assistant", "content": odpoved})
-                    success = True
-                    break
+                # Použijeme model gemini-1.5-flash přes oficiální SDK
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                full_prompt = f"Instrukce: {t_info}\nData: {v_info}\nUživatel: {prompt}"
+                
+                response = model.generate_content(full_prompt)
+                
+                if response.text:
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
                 else:
-                    last_error = str(res)
+                    st.error("AI vrátilo prázdnou odpověď.")
             except Exception as e:
-                last_error = str(e)
-                continue
-        
-        if not success:
-            st.error(f"Ani jeden model neodpovídá. Poslední chyba: {last_error}")
+                # Pokud by flash náhodou nešel, zkusíme pro
+                try:
+                    model = genai.GenerativeModel('gemini-pro')
+                    response = model.generate_content(full_prompt)
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                except:
+                    st.error(f"Kritická chyba AI: {str(e)}")
