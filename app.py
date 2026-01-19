@@ -45,7 +45,7 @@ def inject_styles(image_file):
 
 inject_styles(JMENO_SOUBORU)
 
-# --- 2. DATA (TVÁ PŮVODNÍ LOGIKA) ---
+# --- 2. DATA (PŮVODNÍ LOGIKA) ---
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
@@ -63,7 +63,7 @@ def nacti_data():
 
 data = nacti_data()
 
-# --- 3. SIDEBAR (PŮVODNÍ STYL) ---
+# --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("📌 Informace")
     if not data.empty and 'zprava' in data.columns:
@@ -73,7 +73,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 4. HLAVNÍ HLAVIČKA (LOGO A NÁZEV) ---
+# --- 4. HLAVIČKA ---
 try:
     with open(JMENO_SOUBORU, "rb") as f:
         logo_base = base64.b64encode(f.read()).decode()
@@ -91,7 +91,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 5. CHAT A AI LOGIKA (VERZE v1) ---
+# --- 5. CHAT A AI LOGIKA (V1 + GEMINI-PRO) ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -105,13 +105,12 @@ if prompt := st.chat_input("Zadejte dotaz..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # POUŽÍVÁME PŘÍMO VERZI v1
-        url_ai = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+        # ZMĚNA: Používáme gemini-pro, který je v v1 nejstabilnější
+        url_ai = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={API_KEY}"
         
         v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
         t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
         
-        # Zjednodušený payload, který v1 vyžaduje
         payload = {
             "contents": [{
                 "parts": [{"text": f"Instrukce: {t_info}\nData: {v_info}\nDotaz: {prompt}"}]
@@ -127,7 +126,6 @@ if prompt := st.chat_input("Zadejte dotaz..."):
                 st.markdown(odpoved)
                 st.session_state.messages.append({"role": "assistant", "content": odpoved})
             else:
-                # TADY JE TA DŮLEŽITÁ ČÁST: Vypíše přesně, co si Google myslí
                 st.error(f"Odpověď od Googlu: {res}")
         except Exception as e:
             st.error(f"Chyba spojení: {e}")
