@@ -1,18 +1,12 @@
 import streamlit as st
 import pandas as pd
 import requests
-import time
 import base64
 
 # ==============================================================================
-# 1. KONFIGURACE A VYNUCENÍ VIDITELNOSTI SIDEBARU
+# 1. NASTAVENÍ A VZHLED (DARK MODE + LOGO + POZADÍ)
 # ==============================================================================
-# initial_sidebar_state="expanded" zajistí, že panel bude při startu vidět
-st.set_page_config(
-    page_title="KVÁDR AI", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
 JMENO_SOUBORU = "pozadí.png.png"
 
@@ -27,78 +21,68 @@ def inject_custom_css(image_file):
 
     st.markdown(f"""
     <style>
-        /* Pozadí chatu - celé logo bez ořezu */
+        /* 1. TVRDÝ TMAVÝ REŽIM A POZADÍ */
         .stApp {{
             background-color: #0e1117;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.88)), {bg_image_css};
+            background-image: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.85)), {bg_image_css};
             background-size: contain; 
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-position: center center;
         }}
 
-        /* Vynucení Dark Mode textů */
-        h1, h2, h3, p, div, span, label, .stMarkdown, li {{
-            color: #ffffff !important;
-        }}
-
-        /* FIX SIDEBARU: Aby byl vždy čitelný a viditelný */
-        [data-testid="stSidebar"] {{
-            background-color: #111111 !important;
-            border-right: 1px solid #333 !important;
-            min-width: 250px !important;
-        }}
-
-        /* FIX LOGA A TEXTU V JEDNÉ ŘADĚ (MOBIL I PC) */
-        .header-container {{
+        /* 2. HLAVIČKA (LOGO + TEXT) V JEDNÉ LINCE */
+        .header-box {{
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
             margin-bottom: 20px;
         }}
-        
         .header-logo {{
-            width: 50px !important;
+            width: 45px !important;
             height: auto;
         }}
-
-        .header-text {{
+        .header-text-group {{
             display: flex;
             flex-direction: column;
         }}
-
-        .header-text h1 {{
+        .header-text-group h1 {{
             margin: 0 !important;
             padding: 0 !important;
-            font-size: 1.8rem !important;
-            line-height: 1 !important;
+            font-size: 1.6rem !important;
+            color: #ffffff !important;
         }}
-
-        .subtitle {{
+        .header-text-group p {{
+            margin: 0 !important;
             color: #4facfe !important;
             font-size: 0.8rem !important;
             font-weight: bold;
-            letter-spacing: 3px;
+            letter-spacing: 2px;
             text-transform: uppercase;
-            margin: 0 !important;
         }}
 
-        /* Skrytí Streamlit menu pro čistší vzhled */
-        #MainMenu {{visibility: hidden;}}
-        footer {{visibility: hidden;}}
+        /* 3. OPRAVA TEXTŮ (BÍLÁ BARVA) */
+        h1, h2, h3, p, div, span, label, .stMarkdown {{
+            color: #ffffff !important;
+        }}
+        
+        /* 4. POSTUPNÍ PANEL (SIDEBAR) - KLASICKÝ STYL */
+        [data-testid="stSidebar"] {{
+            background-color: #111111;
+        }}
     </style>
     """, unsafe_allow_html=True)
 
 inject_custom_css(JMENO_SOUBORU)
 
 # ==============================================================================
-# 2. DATA A OPRAVA AI (VERZE v1)
+# 2. DATA A KONFIGURACE AI (VERZE v1)
 # ==============================================================================
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
 except:
-    st.error("⚠️ CHYBA: Nastavte API klíče v Secrets!")
+    st.error("Chybí API klíče v Secrets!")
     st.stop()
 
 def nacti_data():
@@ -112,47 +96,43 @@ def nacti_data():
 data = nacti_data()
 
 # ==============================================================================
-# 3. SIDEBAR (POSTRANNÍ PANEL)
+# 3. POSTRANNÍ PANEL (SIDEBAR) - JAKO PŘEDTÍM
 # ==============================================================================
 with st.sidebar:
-    st.image(JMENO_SOUBORU, width=100)
-    st.title("SYSTÉM KVÁDR")
-    st.write("---")
-    
-    st.subheader("📢 Aktuální info")
+    st.title("📌 Informace")
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
     
-    st.write("---")
-    if st.button("🗑️ Resetovat chat"):
+    st.divider()
+    if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
 
 # ==============================================================================
-# 4. HLAVNÍ ROZHRANÍ (LOGO + NÁZEV V JEDNÉ ŘADĚ)
+# 4. HLAVNÍ PLOCHA (LOGO + CHAT)
 # ==============================================================================
 
-# Použití HTML pro naprostou kontrolu nad řazením loga a textu
+# Načtení loga pro hlavičku (HTML cesta)
 try:
     with open(JMENO_SOUBORU, "rb") as f:
-        logo_data = f.read()
-    logo_base64 = base64.b64encode(logo_data).decode()
-    logo_html = f'data:image/png;base64,{logo_base64}'
+        logo_base64 = base64.b64encode(f.read()).decode()
+    logo_src = f"data:image/png;base64,{logo_base64}"
 except:
-    logo_html = ""
+    logo_src = ""
 
+# Vykreslení hlavičky
 st.markdown(f"""
-    <div class="header-container">
-        <img src="{logo_html}" class="header-logo">
-        <div class="header-text">
+    <div class="header-box">
+        <img src="{logo_src}" class="header-logo">
+        <div class="header-text-group">
             <h1>KVÁDR</h1>
-            <p class="subtitle">AI ASISTENT</p>
+            <p>AI ASISTENT</p>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# --- CHAT ---
+# Logika Chatu
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -160,43 +140,49 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Zadejte dotaz..."):
+if prompt := st.chat_input("Zadejte dotaz pro KVÁDR..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("KVÁDR odpovídá..."):
+        with st.spinner("KVÁDR přemýšlí..."):
             v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
             t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
             
-            # OPRAVA: Zkoušíme stabilní cestu pro v1
-            # Pokud gemini-1.5-flash selže, kód automaticky zkusí gemini-pro
-            model_to_use = "gemini-1.5-flash"
-            url_ai = f"https://generativelanguage.googleapis.com/v1/models/{model_to_use}:generateContent?key={API_KEY}"
+            # --- VOLÁNÍ STABILNÍHO v1 MODELU ---
+            # Pokud gemini-1.5-flash v v1 stále hlásí chybu, znamená to, 
+            # že váš klíč vyžaduje v1beta. Zde je ale vynuceno v1.
+            model_name = "gemini-1.5-flash"
+            url_ai = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={API_KEY}"
             
             payload = {
-                "contents": [{"parts": [{"text": f"Instrukce: {t_info}\nData: {v_info}\nUživatel: {prompt}"}]}]
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": f"Instrukce: {t_info}\nKontext: {v_info}\nUživatel: {prompt}"}]
+                    }
+                ]
             }
             
             try:
                 response = requests.post(url_ai, json=payload)
                 res = response.json()
                 
-                if 'candidates' in res:
+                if 'candidates' in res and len(res['candidates']) > 0:
                     odpoved = res['candidates'][0]['content']['parts'][0]['text']
                     st.markdown(odpoved)
                     st.session_state.messages.append({"role": "assistant", "content": odpoved})
                 else:
-                    # Pokud flash neexistuje v v1, zkusíme gemini-pro (starší stabilní verze)
-                    url_ai_fallback = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={API_KEY}"
-                    response = requests.post(url_ai_fallback, json=payload)
-                    res = response.json()
-                    if 'candidates' in res:
-                        odpoved = res['candidates'][0]['content']['parts'][0]['text']
+                    # Pokud v1 nezná model, zkusíme automaticky v1beta jako záchranu
+                    url_fallback = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
+                    res_fallback = requests.post(url_fallback, json=payload).json()
+                    
+                    if 'candidates' in res_fallback:
+                        odpoved = res_fallback['candidates'][0]['content']['parts'][0]['text']
                         st.markdown(odpoved)
                         st.session_state.messages.append({"role": "assistant", "content": odpoved})
                     else:
-                        st.error(f"Chyba: {res.get('error', {}).get('message', 'Model není dostupný.')}")
+                        st.error(f"Chyba AI: {res.get('error', {}).get('message', 'Model není dostupný.')}")
             except Exception as e:
                 st.error(f"Chyba spojení: {e}")
