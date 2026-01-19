@@ -7,15 +7,14 @@ import base64
 # ==============================================================================
 # 1. NASTAVENÍ STRÁNKY A POZADÍ
 # ==============================================================================
-st.set_page_config(page_title="Kvádr AI Asistent", layout="wide")
+st.set_page_config(page_title="Kvadr AI Asistent", layout="wide")
 
-def set_background(pozadí.png.png):
+def set_background(image_file):
     """
-    Načte obrázek a nastaví ho jako pozadí aplikace s tmavým filtrem,
-    aby byl text čitelný.
+    Načte obrázek a nastaví ho jako pozadí aplikace.
     """
     try:
-        with open(pozadí.png.png, "rb") as f:
+        with open(image_file, "rb") as f:
             data = f.read()
         bin_str = base64.b64encode(data).decode()
         
@@ -27,31 +26,24 @@ def set_background(pozadí.png.png):
             background-position: center;
             background-attachment: fixed;
         }}
-        /* Úprava barev textu, aby byl na pozadí vidět */
-        h1, h2, h3, p, div, span {{
+        /* Bílá barva pro veškerý text kvůli čitelnosti */
+        h1, h2, h3, p, div, span, .stMarkdown {{
             color: #ffffff !important;
-            text-shadow: 1px 1px 2px black;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
         }}
         [data-testid="stSidebar"] {{
-            background-color: rgba(22, 27, 34, 0.9);
-            border-right: 1px solid #30363d;
+            background-color: rgba(22, 27, 34, 0.95);
         }}
-        .stInfo {{ background-color: rgba(31, 41, 55, 0.8); color: #e5e7eb; border: 1px solid #3b82f6; }}
-        .stWarning {{ background-color: rgba(45, 45, 0, 0.8); color: #fef08a; border: 1px solid #ca8a04; }}
         </style>
         """
         st.markdown(page_bg_img, unsafe_allow_html=True)
     except FileNotFoundError:
-        # Pokud obrázek chybí, použije se jen tmavá barva
-        st.warning("Obrázek 'pozadi.png' nebyl nalezen. Používám černé pozadí.")
-        st.markdown("""
-        <style>
-        .stApp { background-color: #0e1117; color: #fafafa; }
-        </style>
-        """, unsafe_allow_html=True)
+        st.error(f"Soubor '{image_file}' nebyl nalezen! Zkontroluj název v GitHubu.")
 
-# ZAVOLÁNÍ FUNKCE PRO POZADÍ (Obrázek musí být na GitHubu jako 'pozadi.png')
-set_background('pozadi.png')
+# --- TADY JE TA OPRAVA ---
+# Používáme přesný název z tvého obrázku
+JMENO_SOUBORU = "pozadí.png.png"
+set_background(JMENO_SOUBORU)
 
 # Načtení klíčů ze Secrets
 try:
@@ -62,7 +54,7 @@ except:
     st.stop()
 
 # ==============================================================================
-# 2. FUNKCE PRO DATA A CHYTRÁ DETEKCE MODELU
+# 2. FUNKCE PRO DATA A MODEL
 # ==============================================================================
 
 def nacti_data():
@@ -91,7 +83,7 @@ data = nacti_data()
 MODEL_NAME = ziskej_funkcni_model()
 
 # ==============================================================================
-# 3. LEVÝ PANEL (SIDEBAR)
+# 3. SIDEBAR A HLAVNÍ CHAT
 # ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
@@ -99,34 +91,17 @@ with st.sidebar:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
     
-    st.divider()
     if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
-    
-    st.divider()
-    heslo_input = st.text_input("Správa (heslo)", type="password")
-    if heslo_input == "mojeheslo":
-        st.success(f"Model: {MODEL_NAME}")
-        if 'tajne' in data.columns:
-            for t in data['tajne'].dropna():
-                st.warning(t)
 
-# ==============================================================================
-# 4. HLAVNÍ CHAT
-# ==============================================================================
-
-# Nadpis s logem (pokud existuje logo.png, jinak emoji)
+# Hlavička s logem
 col1, col2 = st.columns([0.15, 0.85])
 with col1:
-    try:
-        st.image("logo.png", width=80) 
-    except:
-        st.header("🤖")
+    # Tady taky opravený název
+    st.image(JMENO_SOUBORU, width=80) 
 with col2:
     st.title("Kvadr AI Asistent")
-
-st.markdown("<p style='color: #cccccc; font-style: italic;'>Tvůj průvodce projektem. Data čerpám z tabulky.</p>", unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -157,27 +132,14 @@ if prompt := st.chat_input("Napiš svou otázku..."):
                 ]
             }
             
-            uspech = False
-            for pokus in range(5):
-                try:
-                    response = requests.post(url_ai, json=payload)
-                    res = response.json()
-                    
-                    if 'candidates' in res:
-                        odpoved = res['candidates'][0]['content']['parts'][0]['text']
-                        st.markdown(odpoved)
-                        st.session_state.messages.append({"role": "assistant", "content": odpoved})
-                        uspech = True
-                        break
-                    elif 'error' in res and res['error'].get('code') in [429, 503]:
-                        time.sleep(2 + pokus * 2)
-                        continue
-                    else:
-                        st.error("Chyba AI.")
-                        break
-                except Exception as e:
-                    st.error(f"Chyba spojení: {e}")
-                    break
-            
-            if not uspech:
-                st.warning("⚠️ Servery jsou přetížené. Zkus to za chvíli.")
+            try:
+                response = requests.post(url_ai, json=payload)
+                res = response.json()
+                if 'candidates' in res:
+                    odpoved = res['candidates'][0]['content']['parts'][0]['text']
+                    st.markdown(odpoved)
+                    st.session_state.messages.append({"role": "assistant", "content": odpoved})
+                else:
+                    st.error("AI neodpovídá, zkontroluj API klíč.")
+            except Exception as e:
+                st.error(f"Chyba: {e}")
