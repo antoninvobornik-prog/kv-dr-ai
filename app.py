@@ -3,7 +3,9 @@ import pandas as pd
 import google.generativeai as genai
 import base64
 
-# --- 1. DESIGN (BEZ ZMĚN, TVŮJ STYL) ---
+# ==============================================================================
+# 1. DESIGN A VZHLED (TVŮJ STYL, FIXNÍ LOGO)
+# ==============================================================================
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
 JMENO_SOUBORU = "pozadí.png.png"
@@ -35,16 +37,18 @@ def inject_styles(image_file):
 
 inject_styles(JMENO_SOUBORU)
 
-# --- 2. DATA A KONFIGURACE AI (OFICIÁLNÍ KNIHOVNA) ---
+# ==============================================================================
+# 2. NAČTENÍ DAT (PŮVODNÍ FUNKČNÍ LOGIKA)
+# ==============================================================================
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
-    # Inicializace Google AI
     genai.configure(api_key=API_KEY)
 except:
     st.error("Chybí API klíče v Secrets!")
     st.stop()
 
+@st.cache_data
 def nacti_data():
     try:
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
@@ -54,17 +58,22 @@ def nacti_data():
 
 data = nacti_data()
 
-# --- 3. SIDEBAR ---
+# ==============================================================================
+# 3. SIDEBAR (PŮVODNÍ KLASICKÝ)
+# ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
+    st.divider()
     if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
 
-# --- 4. HLAVIČKA ---
+# ==============================================================================
+# 4. HLAVIČKA (LOGO VLEVO, TEXT VPRAVO)
+# ==============================================================================
 try:
     with open(JMENO_SOUBORU, "rb") as f:
         logo_base = base64.b64encode(f.read()).decode()
@@ -78,7 +87,9 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 5. CHAT A AI POMOCÍ SDK ---
+# ==============================================================================
+# 5. CHAT A INTELIGENTNÍ VOLÁNÍ AI (BEZCHYBNÉ)
+# ==============================================================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -95,25 +106,40 @@ if prompt := st.chat_input("Zadejte dotaz..."):
         with st.spinner("KVÁDR přemýšlí..."):
             v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
             t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
+            full_prompt = f"Instrukce: {t_info}\nData: {v_info}\nUživatel: {prompt}"
             
+            # --- DETEKCE FUNKČNÍHO MODELU ---
             try:
-                # Použijeme model gemini-1.5-flash přes oficiální SDK
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                full_prompt = f"Instrukce: {t_info}\nData: {v_info}\nUživatel: {prompt}"
+                # Zkusíme najít jakýkoliv model, který podporuje generování textu
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                 
-                response = model.generate_content(full_prompt)
+                # Prioritní modely (seřazeno od nejlepších)
+                preferred = [
+                    'models/gemini-1.5-flash-latest', 
+                    'models/gemini-1.5-flash', 
+                    'models/gemini-pro'
+                ]
                 
-                if response.text:
-                    st.markdown(response.text)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
-                else:
-                    st.error("AI vrátilo prázdnou odpověď.")
-            except Exception as e:
-                # Pokud by flash náhodou nešel, zkusíme pro
-                try:
-                    model = genai.GenerativeModel('gemini-pro')
+                target_model = None
+                for p in preferred:
+                    if p in available_models:
+                        target_model = p
+                        break
+                
+                if not target_model and available_models:
+                    target_model = available_models[0] # Pokud není v seznamu, vem první dostupný
+                
+                if target_model:
+                    model = genai.GenerativeModel(target_model)
                     response = model.generate_content(full_prompt)
-                    st.markdown(response.text)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
-                except:
-                    st.error(f"Kritická chyba AI: {str(e)}")
+                    
+                    if response.text:
+                        st.markdown(response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    else:
+                        st.error("AI vrátilo prázdný výsledek.")
+                else:
+                    st.error("Ve vašem Google projektu nebyly nalezeny žádné podporované AI modely.")
+                    
+            except Exception as e:
+                st.error(f"Kritická chyba: {str(e)}")
