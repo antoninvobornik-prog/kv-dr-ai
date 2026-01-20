@@ -4,7 +4,7 @@ import google.generativeai as genai
 import base64
 
 # ==============================================================================
-# 1. DESIGN A VZHLED (VŠE ZACHOVÁNO + BUBLINY A STRANY)
+# 1. DESIGN A VZHLED (VŠE ZACHOVÁNO + NOVÉ UPOZORNĚNÍ)
 # ==============================================================================
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
@@ -30,25 +30,25 @@ def inject_styles(image_file):
         /* HLAVIČKA */
         .header-container {{ display: flex; flex-direction: row; align-items: center; gap: 12px; padding-bottom: 20px; }}
         .header-container img {{ width: 45px !important; height: auto; }}
-        .header-container h1 {{ margin: 0 !important; font-size: 1.8rem !important; }}
-        .header-container p {{ margin: 0 !important; color: #4facfe !important; font-weight: bold; letter-spacing: 2px; font-size: 0.8rem !important; }}
+        .header-container .text-wrapper {{ display: flex; flex-direction: column; }}
+        .header-container h1 {{ margin: 0 !important; font-size: 1.8rem !important; line-height: 1.1 !important; }}
+        .header-container .sub-blue {{ margin: 0 !important; color: #4facfe !important; font-weight: bold; letter-spacing: 2px; font-size: 0.8rem !important; text-transform: uppercase; }}
+        .header-container .disclaimer {{ color: #888888 !important; font-style: italic; font-size: 0.75rem !important; margin-top: 2px !important; }}
         
         /* SIDEBAR */
         [data-testid="stSidebar"] {{ background-color: #111111; }}
 
-        /* STYLING CHATU - BUBLINY A STRANY */
+        /* STYLING CHATU */
         div[data-testid="stChatMessage"]:has(img[alt="user"]) {{
             flex-direction: row-reverse !important;
             text-align: right;
         }}
-
         div[data-testid="stChatMessageContent"] {{
             background-color: rgba(255, 255, 255, 0.05) !important;
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 15px !important;
             padding: 10px 15px !important;
         }}
-
         div[data-testid="stChatMessage"]:has(img[alt="user"]) div[data-testid="stChatMessageContent"] {{
             background-color: rgba(79, 172, 254, 0.1) !important;
             border: 1px solid rgba(79, 172, 254, 0.3);
@@ -81,25 +81,20 @@ def nacti_data():
 data = nacti_data()
 
 # ==============================================================================
-# 3. SIDEBAR (TLAČÍTKO SMAZAT JE TEĎ NAHOŘE)
+# 3. SIDEBAR (TLAČÍTKO SMAZAT NAHOŘE)
 # ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
-    
-    # Tlačítko smazat je nyní první
     if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
-    
     st.divider()
-    
-    # Informace z tabulky jsou pod tlačítkem
     if not data.empty and 'zprava' in data.columns:
         for zpr in data['zprava'].dropna():
             st.info(zpr)
 
 # ==============================================================================
-# 4. HLAVNÍ HLAVIČKA
+# 4. HLAVIČKA (S NOVÝM TEXTEM)
 # ==============================================================================
 try:
     with open(JMENO_SOUBORU, "rb") as f:
@@ -110,12 +105,16 @@ except: logo_src = ""
 st.markdown(f"""
     <div class="header-container">
         <img src="{logo_src}">
-        <div><h1>KVÁDR</h1><p>AI ASISTENT</p></div>
+        <div class="text-wrapper">
+            <h1>KVÁDR</h1>
+            <p class="sub-blue">AI ASISTENT</p>
+            <p class="disclaimer">Kvádr AI může dělat chyby (i co se týče Kvádru), takže vše kontrolujte.</p>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 5. CHAT A INTELIGENTNÍ VOLÁNÍ AI (VŠEOBECNÉ OTÁZKY + KVÁDR DATA)
+# 5. CHAT A AI LOGIKA
 # ==============================================================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -133,28 +132,23 @@ if prompt := st.chat_input("Zadejte dotaz..."):
         with st.spinner("KVÁDR přemýšlí..."):
             v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
             t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
-            
-            system_instrukce = f"""
-            Jsi KVÁDR AI, inteligentní asistent. 
-            Zde jsou tvé prioritní informace o projektu KVÁDR: {t_info} {v_info}.
-            Pokud se uživatel ptá na KVÁDR, odpověz podle těchto dat.
-            Pokud se uživatel ptá na cokoliv jiného, odpověz mu užitečně jako pokročilá AI, 
-            ale stále vystupuj jako asistent KVÁDR. Buď profesionální a stručný.
-            """
+            system_instrukce = f"Jsi KVÁDR AI. Info o projektu: {t_info} {v_info}. Odpovídej užitečně na cokoli."
             
             try:
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                 preferred = ['models/gemini-1.5-flash-latest', 'models/gemini-1.5-flash', 'models/gemini-pro']
-                
                 target_model = next((p for p in preferred if p in available_models), available_models[0] if available_models else None)
                 
                 if target_model:
                     model = genai.GenerativeModel(target_model)
-                    response = model.generate_content(f"{system_instrukce}\n\nUživatel se ptá: {prompt}")
+                    response = model.generate_content(f"{system_instrukce}\n\nDotaz: {prompt}")
                     if response.text:
                         st.markdown(response.text)
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
                 else:
                     st.error("Model nenalezen.")
             except Exception as e:
-                st.error(f"Chyba: {str(e)}")
+                if "429" in str(e) or "quota" in str(e).lower():
+                    st.warning("⚠️ KVÁDR je teď přetížený. Počkejte 30s.")
+                else:
+                    st.error(f"Chyba: {str(e)}")
