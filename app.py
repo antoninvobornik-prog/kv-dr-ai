@@ -4,9 +4,10 @@ import google.generativeai as genai
 import base64
 
 # ==============================================================================
-# 1. DESIGN A VZHLED (ZŮSTÁVÁ STEJNÝ)
+# 1. DESIGN A VZHLED (VŠE ZACHOVÁNO + BUBLINY A STRANY)
 # ==============================================================================
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
+
 JMENO_SOUBORU = "pozadí.png.png"
 
 def inject_styles(image_file):
@@ -19,20 +20,35 @@ def inject_styles(image_file):
         .stApp {{
             background-color: #0e1117;
             background-image: linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.88)), url("data:image/png;base64,{bin_str}");
-            background-size: contain; background-repeat: no-repeat; background-attachment: fixed; background-position: center;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-position: center;
         }}
         h1, h2, h3, p, span, div, .stMarkdown, label {{ color: #ffffff !important; }}
+        
+        /* HLAVIČKA */
         .header-container {{ display: flex; flex-direction: row; align-items: center; gap: 12px; padding-bottom: 20px; }}
         .header-container img {{ width: 45px !important; height: auto; }}
         .header-container h1 {{ margin: 0 !important; font-size: 1.8rem !important; }}
         .header-container p {{ margin: 0 !important; color: #4facfe !important; font-weight: bold; letter-spacing: 2px; font-size: 0.8rem !important; }}
+        
+        /* SIDEBAR */
         [data-testid="stSidebar"] {{ background-color: #111111; }}
-        div[data-testid="stChatMessage"]:has(img[alt="user"]) {{ flex-direction: row-reverse !important; text-align: right; }}
+
+        /* STYLING CHATU - BUBLINY A STRANY */
+        div[data-testid="stChatMessage"]:has(img[alt="user"]) {{
+            flex-direction: row-reverse !important;
+            text-align: right;
+        }}
+
         div[data-testid="stChatMessageContent"] {{
             background-color: rgba(255, 255, 255, 0.05) !important;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px !important; padding: 10px 15px !important;
+            border-radius: 15px !important;
+            padding: 10px 15px !important;
         }}
+
         div[data-testid="stChatMessage"]:has(img[alt="user"]) div[data-testid="stChatMessageContent"] {{
             background-color: rgba(79, 172, 254, 0.1) !important;
             border: 1px solid rgba(79, 172, 254, 0.3);
@@ -44,7 +60,7 @@ def inject_styles(image_file):
 inject_styles(JMENO_SOUBORU)
 
 # ==============================================================================
-# 2. DATA A KONFIGURACE
+# 2. DATA A KONFIGURACE AI
 # ==============================================================================
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
@@ -65,27 +81,41 @@ def nacti_data():
 data = nacti_data()
 
 # ==============================================================================
-# 3. SIDEBAR A HLAVIČKA
+# 3. SIDEBAR (TLAČÍTKO SMAZAT JE TEĎ NAHOŘE)
 # ==============================================================================
 with st.sidebar:
     st.title("📌 Informace")
-    if not data.empty and 'zprava' in data.columns:
-        for zpr in data['zprava'].dropna():
-            st.info(zpr)
+    
+    # Tlačítko smazat je nyní první
     if st.button("🗑️ Smazat historii"):
         st.session_state.messages = []
         st.rerun()
+    
+    st.divider()
+    
+    # Informace z tabulky jsou pod tlačítkem
+    if not data.empty and 'zprava' in data.columns:
+        for zpr in data['zprava'].dropna():
+            st.info(zpr)
 
+# ==============================================================================
+# 4. HLAVNÍ HLAVIČKA
+# ==============================================================================
 try:
     with open(JMENO_SOUBORU, "rb") as f:
         logo_base = base64.b64encode(f.read()).decode()
     logo_src = f'data:image/png;base64,{logo_base}'
 except: logo_src = ""
 
-st.markdown(f"""<div class="header-container"><img src="{logo_src}"><div><h1>KVÁDR</h1><p>AI ASISTENT</p></div></div>""", unsafe_allow_html=True)
+st.markdown(f"""
+    <div class="header-container">
+        <img src="{logo_src}">
+        <div><h1>KVÁDR</h1><p>AI ASISTENT</p></div>
+    </div>
+""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 4. CHAT (UPRAVENO PRO VŠEOBECNÉ OTÁZKY)
+# 5. CHAT A INTELIGENTNÍ VOLÁNÍ AI (VŠEOBECNÉ OTÁZKY + KVÁDR DATA)
 # ==============================================================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -104,12 +134,11 @@ if prompt := st.chat_input("Zadejte dotaz..."):
             v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
             t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
             
-            # --- TADY JE TA ZMĚNA V INSTRUKCÍCH ---
             system_instrukce = f"""
             Jsi KVÁDR AI, inteligentní asistent. 
-            Zde jsou tvé prioritní informace a instrukce o projektu KVÁDR: {t_info} {v_info}.
+            Zde jsou tvé prioritní informace o projektu KVÁDR: {t_info} {v_info}.
             Pokud se uživatel ptá na KVÁDR, odpověz podle těchto dat.
-            Pokud se uživatel ptá na cokoliv jiného mimo téma KVÁDR, odpověz mu normálně a užitečně jako pokročilá AI, 
+            Pokud se uživatel ptá na cokoliv jiného, odpověz mu užitečně jako pokročilá AI, 
             ale stále vystupuj jako asistent KVÁDR. Buď profesionální a stručný.
             """
             
@@ -121,9 +150,7 @@ if prompt := st.chat_input("Zadejte dotaz..."):
                 
                 if target_model:
                     model = genai.GenerativeModel(target_model)
-                    # Spojíme instrukce a dotaz
                     response = model.generate_content(f"{system_instrukce}\n\nUživatel se ptá: {prompt}")
-                    
                     if response.text:
                         st.markdown(response.text)
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
