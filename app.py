@@ -149,6 +149,6 @@ if prompt := st.chat_input("Zadejte dotaz..."):
                     st.error("Model nenalezen.")
             except Exception as e:
                 if "429" in str(e) or "quota" in str(e).lower():
-                    st.warning("⚠️KVÁDR AI je teď přetížený. Počkejte cca 40s.⚠️")
+                    st.warning("⚠️KVÁDR AI je teď přetížený. Počkejte 1min ⚠️")
                 else:
                     st.error(f"Chyba: {str(e)}")
