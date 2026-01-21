@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import base64
+import time
 
 # ==============================================================================
-# 1. DESIGN A VZHLED (VŠE ZACHOVÁNO + NOVÉ UPOZORNĚNÍ)
+# 1. DESIGN A VZHLED
 # ==============================================================================
 st.set_page_config(page_title="KVÁDR AI", layout="wide")
 
@@ -60,7 +61,7 @@ def inject_styles(image_file):
 inject_styles(JMENO_SOUBORU)
 
 # ==============================================================================
-# 2. DATA A KONFIGURACE AI
+# 2. DATA (VŽDY ČERSTVÉ NAČÍTÁNÍ)
 # ==============================================================================
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
@@ -70,13 +71,15 @@ except:
     st.error("Chybí API klíče v Secrets!")
     st.stop()
 
-@st.cache_data
 def nacti_data():
     try:
+        # Přidání unikátního parametru pro vynucení čerstvých dat (zabrání cache prohlížeče)
+        cache_buster = int(time.time())
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
-        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1"
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1&t={cache_buster}"
         return pd.read_csv(url)
-    except: return pd.DataFrame(columns=['zprava', 'tajne'])
+    except: 
+        return pd.DataFrame(columns=['zprava', 'tajne'])
 
 data = nacti_data()
 
@@ -94,7 +97,7 @@ with st.sidebar:
             st.info(zpr)
 
 # ==============================================================================
-# 4. HLAVIČKA (S NOVÝM TEXTEM)
+# 4. HLAVIČKA
 # ==============================================================================
 try:
     with open(JMENO_SOUBORU, "rb") as f:
@@ -132,7 +135,14 @@ if prompt := st.chat_input("Zadejte dotaz..."):
         with st.spinner("KVÁDR přemýšlí..."):
             v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
             t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
-            system_instrukce = f"Jsi KVÁDR AI. Info o projektu: {t_info} {v_info}. Odpovídej užitečně na cokoli."
+            
+            system_instrukce = f"""
+            Jsi KVÁDR AI, inteligentní asistent. 
+            Zde jsou tvé prioritní informace o projektu KVÁDR: {t_info} {v_info}.
+            Pokud se uživatel ptá na KVÁDR, odpověz podle těchto dat.
+            Pokud se uživatel ptá na cokoliv jiného, odpověz mu užitečně jako pokročilá AI, 
+            ale stále vystupuj jako asistent KVÁDR. Buď profesionální a stručný.
+            """
             
             try:
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -149,6 +159,6 @@ if prompt := st.chat_input("Zadejte dotaz..."):
                     st.error("Model nenalezen.")
             except Exception as e:
                 if "429" in str(e) or "quota" in str(e).lower():
-                    st.warning("⚠️KVÁDR AI je teď přetížený. Počkejte 1min ⚠️")
+                    st.warning("⚠️ KVÁDR je teď přetížený. Počkejte 1m.⚠️")
                 else:
                     st.error(f"Chyba: {str(e)}")
