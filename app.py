@@ -85,7 +85,7 @@ with st.sidebar:
     if st.button("🏠 DOMŮ"):
         st.session_state.page = "Domů"
     
-    if st.button("💬 AI CHAT"):
+    if st.button("💬 Kvádr AI CHAT"):
         st.session_state.page = "AI Chat"
     
     st.write("---")
