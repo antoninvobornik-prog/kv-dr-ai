@@ -5,64 +5,117 @@ import base64
 import time
 
 # ==============================================================================
-# 1. DESIGN A VZHLED
+# 1. NASTAVENÍ A DESIGN (CSS PRO PŘESNÝ VZHLED)
 # ==============================================================================
-st.set_page_config(page_title="KVÁDR AI", layout="wide")
+st.set_page_config(page_title="KVÁDR AI", layout="wide", initial_sidebar_state="expanded")
 
-JMENO_SOUBORU = "pozadí.png.png"
+def inject_styles():
+    st.markdown("""
+    <style>
+    /* Hlavní pozadí a barva textu */
+    .stApp {
+        background: radial-gradient(circle at center, #101d33 0%, #070b14 100%);
+        color: #e0e0e0;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #0b111e !important;
+        border-right: 1px solid #1e293b;
+        min-width: 250px !important;
+    }
+    
+    /* Sidebar disclaimer - přišpendlený dolů */
+    .sidebar-footer {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        width: 210px;
+        font-size: 0.7rem;
+        color: #475569;
+        font-style: italic;
+    }
 
-def inject_styles(image_file):
-    try:
-        with open(image_file, "rb") as f:
-            data = f.read()
-        bin_str = base64.b64encode(data).decode()
-        st.markdown(f"""
-        <style>
-        .stApp {{
-            background-color: #0e1117;
-            background-image: linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.88)), url("data:image/png;base64,{bin_str}");
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-position: center;
-        }}
-        h1, h2, h3, p, span, div, .stMarkdown, label {{ color: #ffffff !important; }}
-        
-        /* HLAVIČKA */
-        .header-container {{ display: flex; flex-direction: row; align-items: center; gap: 12px; padding-bottom: 20px; }}
-        .header-container img {{ width: 45px !important; height: auto; }}
-        .header-container .text-wrapper {{ display: flex; flex-direction: column; }}
-        .header-container h1 {{ margin: 0 !important; font-size: 1.8rem !important; line-height: 1.1 !important; }}
-        .header-container .sub-blue {{ margin: 0 !important; color: #4facfe !important; font-weight: bold; letter-spacing: 2px; font-size: 0.8rem !important; text-transform: uppercase; }}
-        .header-container .disclaimer {{ color: #888888 !important; font-style: italic; font-size: 0.75rem !important; margin-top: 2px !important; }}
-        
-        /* SIDEBAR */
-        [data-testid="stSidebar"] {{ background-color: #111111; }}
+    /* Hlavička loga v sidebaru */
+    .sidebar-header {
+        padding: 10px 0px 30px 0px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .logo-box {
+        background: linear-gradient(135deg, #3b82f6, #06b6d4);
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    }
 
-        /* STYLING CHATU */
-        div[data-testid="stChatMessage"]:has(img[alt="user"]) {{
-            flex-direction: row-reverse !important;
-            text-align: right;
-        }}
-        div[data-testid="stChatMessageContent"] {{
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px !important;
-            padding: 10px 15px !important;
-        }}
-        div[data-testid="stChatMessage"]:has(img[alt="user"]) div[data-testid="stChatMessageContent"] {{
-            background-color: rgba(79, 172, 254, 0.1) !important;
-            border: 1px solid rgba(79, 172, 254, 0.3);
-        }}
-        </style>
-        """, unsafe_allow_html=True)
-    except: pass
+    /* Úprava tlačítek navigace */
+    .stButton > button {
+        width: 100%;
+        background-color: transparent;
+        border: none;
+        color: #94a3b8;
+        text-align: left;
+        padding: 10px 15px;
+        border-radius: 10px;
+        transition: 0.3s;
+    }
+    .stButton > button:hover {
+        background-color: rgba(59, 130, 246, 0.1);
+        color: #3b82f6;
+    }
+    
+    /* Aktivní stránka (simulace) */
+    .active-nav {
+        background-color: rgba(59, 130, 246, 0.2) !important;
+        color: #3b82f6 !important;
+        border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    }
 
-inject_styles(JMENO_SOUBORU)
+    /* Chat input box - dole */
+    .stChatInputContainer {
+        padding-bottom: 30px !important;
+        background: transparent !important;
+    }
+
+    /* Welcome screen v chatu */
+    .welcome-container {
+        text-align: center;
+        margin-top: 100px;
+    }
+    .welcome-icon {
+        font-size: 50px;
+        background: rgba(59, 130, 246, 0.1);
+        padding: 20px;
+        border-radius: 20px;
+        display: inline-block;
+        margin-bottom: 20px;
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+    
+    /* Odstranění dekorace v sidebaru */
+    [data-testid="stSidebarNav"] {display: none;}
+    </style>
+    """, unsafe_allow_html=True)
+
+inject_styles()
 
 # ==============================================================================
-# 2. DATA (VŽDY ČERSTVÉ NAČÍTÁNÍ)
+# 2. DATA A SESSION STATE (PAMĚŤ APLIKACE)
 # ==============================================================================
+if "page" not in st.session_state:
+    st.session_state.page = "Domů"
+if "home_messages" not in st.session_state:
+    st.session_state.home_messages = ["Vítejte na domovské stránce Kvádru!", "Zde najdete důležité novinky."]
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Načtení klíčů a AI (zůstává stejné)
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     GSHEET_URL = st.secrets["GSHEET_URL"]
@@ -71,94 +124,127 @@ except:
     st.error("Chybí API klíče v Secrets!")
     st.stop()
 
-def nacti_data():
+def nacti_data_pro_ai():
     try:
-        # Přidání unikátního parametru pro vynucení čerstvých dat (zabrání cache prohlížeče)
-        cache_buster = int(time.time())
         sheet_id = GSHEET_URL.split("/d/")[1].split("/")[0]
-        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1&t={cache_buster}"
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=List1&t={int(time.time())}"
         return pd.read_csv(url)
-    except: 
-        return pd.DataFrame(columns=['zprava', 'tajne'])
+    except: return pd.DataFrame(columns=['zprava', 'tajne'])
 
-data = nacti_data()
+data_ai = nacti_data_pro_ai()
 
 # ==============================================================================
-# 3. SIDEBAR (TLAČÍTKO SMAZAT NAHOŘE)
+# 3. SIDEBAR (NAVIGACE PODLE OBRÁZKU)
 # ==============================================================================
 with st.sidebar:
-    st.title("📌 Informace")
-    if st.button("🗑️ Smazat historii"):
-        st.session_state.messages = []
-        st.rerun()
-    st.divider()
-    if not data.empty and 'zprava' in data.columns:
-        for zpr in data['zprava'].dropna():
-            st.info(zpr)
-
-# ==============================================================================
-# 4. HLAVIČKA
-# ==============================================================================
-try:
-    with open(JMENO_SOUBORU, "rb") as f:
-        logo_base = base64.b64encode(f.read()).decode()
-    logo_src = f'data:image/png;base64,{logo_base}'
-except: logo_src = ""
-
-st.markdown(f"""
-    <div class="header-container">
-        <img src="{logo_src}">
-        <div class="text-wrapper">
-            <h1>KVÁDR</h1>
-            <p class="sub-blue">AI ASISTENT</p>
-            <p class="disclaimer">Kvádr AI může dělat chyby (i co se týče Kvádru), takže vše kontrolujte.</p>
+    # Logo a Název
+    st.markdown("""
+        <div class="sidebar-header">
+            <div class="logo-box"><span style="color:white; font-weight:bold;">✦</span></div>
+            <div>
+                <div style="font-weight:bold; font-size:1.2rem; color:white; line-height:1;">KVÁDR</div>
+                <div style="font-size:0.7rem; color:#3b82f6; font-weight:bold; letter-spacing:1px;">AI ASISTENT</div>
+            </div>
         </div>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+    
+    # Navigační tlačítka
+    if st.button("🏠 Domů", key="nav_home", use_container_width=True):
+        st.session_state.page = "Domů"
+        st.rerun()
+    
+    if st.button("💬 AI Chat", key="nav_chat", use_container_width=True):
+        st.session_state.page = "AI Chat"
+        st.rerun()
+
+    # Footer s disclaimerem
+    st.markdown("""
+        <div class="sidebar-footer">
+            Kvádr AI může dělat chyby, takže vše kontrolujte.
+        </div>
+    """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 5. CHAT A AI LOGIKA
+# 4. OBSAH STRÁNEK
 # ==============================================================================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# --- STRÁNKA: DOMŮ ---
+if st.session_state.page == "Domů":
+    st.title("🏠 Domovská stránka")
+    st.write("Aktuální zprávy a novinky:")
+    
+    # Zobrazení zpráv
+    for i, msg in enumerate(st.session_state.home_messages):
+        st.info(msg)
+    
+    st.divider()
+    
+    # Administrace (Heslo123)
+    with st.expander("🔐 Správa zpráv (pro adminy)"):
+        heslo = st.text_input("Zadejte heslo pro úpravy", type="password")
+        if heslo == "Heslo123":
+            nova_zprava = st.text_area("Napsat novou zprávu na domovskou zeď:")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("➕ Přidat zprávu"):
+                    if nova_zprava:
+                        st.session_state.home_messages.append(nova_zprava)
+                        st.rerun()
+            with col2:
+                index_ke_smazani = st.number_input("Index zprávy ke smazání (0, 1...)", min_value=0, step=1)
+                if st.button("🗑️ Smazat zprávu"):
+                    if 0 <= index_ke_smazani < len(st.session_state.home_messages):
+                        st.session_state.home_messages.pop(int(index_ke_smazani))
+                        st.rerun()
+        elif heslo != "":
+            st.error("Nesprávné heslo.")
 
-if prompt := st.chat_input("Zadejte dotaz..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+# --- STRÁNKA: AI CHAT ---
+elif st.session_state.page == "AI Chat":
+    # Hlavička chatu podle obrázku
+    st.markdown("""
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
+            <div class="logo-box" style="width:35px; height:35px;">✦</div>
+            <div>
+                <div style="font-weight:bold; font-size:1.1rem; color:white;">KVÁDR AI Chat</div>
+                <div style="font-size:0.7rem; color:#64748b;">AI asistent k vašim službám</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    with st.chat_message("assistant"):
-        with st.spinner("KVÁDR přemýšlí..."):
-            v_info = " ".join(data['zprava'].dropna().astype(str).tolist())
-            t_info = " ".join(data['tajne'].dropna().astype(str).tolist()) if 'tajne' in data.columns else ""
-            
-            system_instrukce = f"""
-            Jsi KVÁDR AI, inteligentní asistent. 
-            Zde jsou tvé prioritní informace o projektu KVÁDR: {t_info} {v_info}.
-            Pokud se uživatel ptá na KVÁDR, odpověz podle těchto dat.
-            Pokud se uživatel ptá na cokoliv jiného, odpověz mu užitečně jako pokročilá AI, 
-            ale stále vystupuj jako asistent KVÁDR. Buď profesionální a stručný.
-            """
-            
-            try:
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                preferred = ['models/gemini-1.5-flash-latest', 'models/gemini-1.5-flash', 'models/gemini-pro']
-                target_model = next((p for p in preferred if p in available_models), available_models[0] if available_models else None)
+    # Pokud je chat prázdný, ukážeme uvítání jako na obrázku
+    if not st.session_state.messages:
+        st.markdown("""
+            <div class="welcome-container">
+                <div class="welcome-icon">✦</div>
+                <h2 style="margin-bottom:10px;">Vítejte v KVÁDR AI</h2>
+                <p style="color:#94a3b8;">Jsem váš AI asistent. Zeptejte se mě na cokoliv a rád vám pomohu.</p>
+                <p style="font-size:0.8rem; color:#475569; margin-top:30px;">
+                   ⓘ Kvádr AI může dělat chyby, takže vše kontrolujte.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Zobrazení historie zpráv
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Chat input
+    if prompt := st.chat_input("Napište svou zprávu..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("KVÁDR přemýšlí..."):
+                v_info = " ".join(data_ai['zprava'].dropna().astype(str).tolist())
+                system_instrukce = f"Jsi KVÁDR AI. Info: {v_info}. Odpovídej stručně a profesionálně."
                 
-                if target_model:
-                    model = genai.GenerativeModel(target_model)
+                try:
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     response = model.generate_content(f"{system_instrukce}\n\nDotaz: {prompt}")
-                    if response.text:
-                        st.markdown(response.text)
-                        st.session_state.messages.append({"role": "assistant", "content": response.text})
-                else:
-                    st.error("Model nenalezen.")
-            except Exception as e:
-                if "429" in str(e) or "quota" in str(e).lower():
-                    st.warning("⚠️ KVÁDR je teď přetížený. Počkejte 1m.⚠️")
-                else:
-                    st.error(f"Chyba: {str(e)}")
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error("KVÁDR má teď pauzu (limit). Zkuste to za chvíli.")
