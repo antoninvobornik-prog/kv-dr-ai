@@ -8,7 +8,10 @@ from datetime import datetime, timedelta
 # ==========================================
 # 1. INICIALIZACE A KONFIGURACE
 # ==========================================
-st.set_page_config(page_title="Kvádr AI", layout="wide", page_icon="🏙️")
+st.set_page_config(page_title="Kvádr AI", layout="wide", page_icon="🏙️", initial_sidebar_state="collapsed")
+
+# Skrytí bočního panelu pomocí CSS pro jistotu
+st.markdown("<style>section[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
 
 if "page" not in st.session_state:
     st.session_state.page = "Domů"
@@ -78,7 +81,7 @@ st.markdown("""
     .wb-temp { font-size: 18px; font-weight: bold; }
     .city-detail-card { background: rgba(15, 23, 42, 0.8); border-left: 4px solid #3b82f6; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
     .forecast-row { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 5px 0; font-size: 13px; }
-    h1, h2, h3 { color: white !important; text-align: center; font-family: 'Assistant', sans-serif; }
+    h1, h2, h3 { color: white !important; text-align: center; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,7 +109,6 @@ if st.session_state.page == "Domů":
     st.markdown('<h3 style="color:#60a5fa;">Domovská stránka</h3>', unsafe_allow_html=True)
     st.write("---")
 
-    # Počasí
     weather_data = nacti_kompletni_pocasi()
     html_top = '<div class="weather-grid-top">'
     for m, d in weather_data.items():
@@ -124,7 +126,6 @@ if st.session_state.page == "Domů":
                 rows = "".join([f'<div class="forecast-row"><span>{d["den"]}</span><span>{d["pocasi"]}</span><b>{d["teplota"]}</b></div>' for d in data['predpoved']])
                 st.markdown(f'<div class="city-detail-card"><b style="color:#3b82f6">{mesto}</b>{rows}</div>', unsafe_allow_html=True)
 
-    # Oznámení
     st.markdown('<h2 style="margin-top:40px;">📢 Oznámení</h2>', unsafe_allow_html=True)
     df_oznameni = nacti_data_sheets("List 2")
     if not df_oznameni.empty:
@@ -135,12 +136,17 @@ if st.session_state.page == "Domů":
 
 # --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
-    st.title("💬 Chat s Kvádr AI")
-    st.caption("Ptejte se na projekt Kvádr, počasí nebo cokoliv ze světa.")
+    # Hlavička chatu s košem pro smazání historie
+    col_t1, col_t2 = st.columns([0.9, 0.1])
+    with col_t1:
+        st.title("💬 Chat s Kvádr AI")
+    with col_t2:
+        st.write("##") # Zarovnání emoji k textu
+        if st.button("🗑️", help="Vymazat historii"):
+            st.session_state.chat_history = []
+            st.rerun()
     
-    if st.sidebar.button("🗑️ Vymazat historii"):
-        st.session_state.chat_history = []
-        st.rerun()
+    st.caption("Ptejte se na projekt Kvádr, počasí nebo cokoliv ze světa.")
 
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
@@ -154,7 +160,6 @@ elif st.session_state.page == "AI Chat":
         with st.chat_message("assistant"):
             with st.spinner("Kvádr AI přemýšlí..."):
                 try:
-                    # Příprava dat pro AI (Interní info + Detailní počasí)
                     w_data = nacti_kompletni_pocasi()
                     p_txt = ""
                     for m, d in w_data.items():
@@ -164,7 +169,6 @@ elif st.session_state.page == "AI Chat":
                     df_ai = nacti_data_sheets("List 1")
                     kontext_sheets = " ".join(df_ai['zprava'].astype(str).tolist())
                     
-                    # Systémové instrukce
                     sys_prompt = (
                         f"Jsi Kvádr AI, asistent organizace Kvádr. "
                         f"DŮLEŽITÉ: Kvádr je náš projekt, NIKDY o něm nemluv jako o geometrickém tvaru nebo obdélníku! "
