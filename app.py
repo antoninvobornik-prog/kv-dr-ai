@@ -8,8 +8,9 @@ from datetime import datetime, timedelta
 # ==========================================
 # 1. KONFIGURACE
 # ==========================================
-st.set_page_config(page_title="Kvádr AI", layout="wide")
+st.set_page_config(page_title="Kvádr AI", page_icon="✨", layout="wide")
 
+# Inicializace session state proměnných
 if "model_name" not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -19,6 +20,7 @@ if "model_name" not in st.session_state:
 
 if "page" not in st.session_state: st.session_state.page = "Domů"
 if "show_weather_details" not in st.session_state: st.session_state.show_weather_details = False
+if "chat_history" not in st.session_state: st.session_state.chat_history = []
 
 # ==========================================
 # 2. LOGIKA POČASÍ (RYCHLÁ & BEZ CHYB)
@@ -86,7 +88,7 @@ st.markdown("""
     }
     #MainMenu, footer {visibility: hidden;}
 
-    /* Horní lišta */
+    /* Horní lišta počasí */
     .weather-grid-top { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 20px; }
     .weather-box-small {
         background: rgba(59, 130, 246, 0.15);
@@ -99,7 +101,7 @@ st.markdown("""
     .wb-temp { font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 2px; }
     .wb-icon { font-size: 20px; margin-right: 5px; }
 
-    /* Detailní karty - OPRAVA */
+    /* Detailní karty počasí */
     .city-detail-card {
         background: rgba(15, 23, 42, 0.8);
         border-left: 4px solid #3b82f6;
@@ -108,7 +110,6 @@ st.markdown("""
         margin-bottom: 15px;
     }
     .city-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #60a5fa; border-bottom: 1px solid #334155; padding-bottom: 5px; }
-    
     .forecast-row {
         display: flex; justify-content: space-between; align-items: center;
         padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -117,25 +118,28 @@ st.markdown("""
     .f-icon { flex-grow: 1; text-align: left; padding-left: 15px; font-size: 14px; }
     .f-temp { font-weight: bold; color: #e2e8f0; font-size: 14px; }
 
-    .stButton > button { border-radius: 50px !important; font-weight: bold; transition: 0.2s; }
-    .stButton > button:hover { transform: scale(1.02); }
+    /* Styly pro chat uvítání */
+    .chat-welcome-container {
+        text-align: center;
+        padding-top: 10vh; /* Vertikální centrování */
+        padding-bottom: 5vh;
+    }
+    .chat-welcome-icon { font-size: 60px; display: block; margin-bottom: 20px; }
+    .chat-welcome-title { font-size: 3em; font-weight: 800; margin: 0; background: linear-gradient(90deg, #ffffff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .chat-welcome-subtitle { color: #94a3b8; font-size: 1.2em; margin-top: 10px; }
+
+    /* Obecné styly tlačítek */
+    .stButton > button { border-radius: 50px !important; font-weight: bold; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); }
+    .stButton > button:hover { transform: scale(1.02); background: rgba(255,255,255,0.1); }
+    /* Specifický styl pro navigační tlačítko v chatu */
+    .nav-button-container { display: flex; justify-content: center; margin-bottom: 20px; }
+    .nav-button-container .stButton { width: auto; }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 4. NAVIGACE
-# ==========================================
-c1, c2, c3 = st.columns([1, 2, 1])
-with c2:
-    if st.session_state.page == "Domů":
-        if st.button("💬 Přejít na Kvádr AI Chat", use_container_width=True, type="primary"):
-            st.session_state.page = "AI Chat"; st.rerun()
-    else:
-        if st.button("🏠 Zpět na Domovskou stránku", use_container_width=True):
-            st.session_state.page = "Domů"; st.rerun()
 
 # ==========================================
-# 5. DATA A UI
+# 4. POMOCNÉ FUNKCE DATA
 # ==========================================
 def nacti_data_sheets(nazev_listu):
     try:
@@ -145,16 +149,26 @@ def nacti_data_sheets(nazev_listu):
         return pd.read_csv(csv_url)
     except: return pd.DataFrame(columns=['zprava'])
 
+# ==========================================
+# 5. HLAVNÍ LOGIKA STRÁNEK
+# ==========================================
+
+# --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
+    # Navigace Domů -> Chat
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+         if st.button("💬 Přejít na Kvádr AI Chat", use_container_width=True, type="primary"):
+            st.session_state.page = "AI Chat"; st.rerun()
+
     st.markdown('<div style="text-align:center; padding-top:20px; margin-bottom:10px;"><div style="background:rgba(59,130,246,0.1); padding:15px; border-radius:20px; display:inline-block; font-size:40px;">🏠</div></div>', unsafe_allow_html=True)
     
     # NAČTENÍ POČASÍ
     weather_data = nacti_kompletni_pocasi()
 
-    # 1. HORNÍ LIŠTA (bez odsazování HTML řetězců)
+    # 1. HORNÍ LIŠTA
     html_top = '<div class="weather-grid-top">'
     for mesto, data in weather_data.items():
-        # Vše v jednom řádku, aby se zabránilo formátování jako kód
         html_top += f'<div class="weather-box-small"><div class="wb-city">{mesto}</div><div class="wb-temp"><span class="wb-icon">{data["aktualni_ikona"]}</span>{data["aktualni_teplota"]}</div></div>'
     html_top += '</div>'
     st.markdown(html_top, unsafe_allow_html=True)
@@ -167,14 +181,13 @@ if st.session_state.page == "Domů":
             st.session_state.show_weather_details = not st.session_state.show_weather_details
             st.rerun()
 
-    # 2. DETAILNÍ PŘEDPOVĚĎ - OPRAVENO ZOBRAZENÍ
+    # 2. DETAILNÍ PŘEDPOVĚĎ
     if st.session_state.show_weather_details:
         st.write("---")
         cols = st.columns(2)
         idx = 0
         for mesto, data in weather_data.items():
             with cols[idx % 2]:
-                # ZDE BYLA CHYBA: Odstranil jsem odsazení v HTML řetězcích
                 html_rows = ""
                 for den in data['predpoved']:
                     html_rows += f'<div class="forecast-row"><span class="f-date">{den["den"]}</span><span class="f-icon">{den["pocasi"]}</span><span class="f-temp">{den["teplota"]}</span></div>'
@@ -194,25 +207,11 @@ if st.session_state.page == "Domů":
     for zprava in df['zprava'].dropna():
         st.markdown(f'<div style="background:rgba(15,23,42,0.6); border:1px solid #1e293b; padding:20px; border-radius:15px; margin:10px auto; max-width:800px; font-size:16px;">{zprava}</div>', unsafe_allow_html=True)
 
+# --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
-    if "chat_history" not in st.session_state: st.session_state.chat_history = []
-    
-    if not st.session_state.chat_history:
-        st.markdown('<div style="text-align:center; padding-top:50px;"><span style="font-size:50px; display:block; margin-bottom:20px;">✨</span><h1 style="margin:0;">Vítejte v KVÁDR AI</h1><p style="color:#94a3b8;">Jsem připraven pomoci.</p></div>', unsafe_allow_html=True)
-
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]): st.markdown(msg["content"])
-
-    if pr := st.chat_input("Napište zprávu..."):
-        st.session_state.chat_history.append({"role": "user", "content": pr})
-        with st.chat_message("user"): st.markdown(pr)
-        with st.chat_message("assistant"):
-            with st.spinner("Kvádr AI přemýšlí..."):
-                try:
-                    df_ai = nacti_data_sheets("List 1")
-                    ctx = " ".join(df_ai['zprava'].astype(str).tolist())
-                    model = genai.GenerativeModel(st.session_state.model_name)
-                    res = model.generate_content(f"Kontext: {ctx}\nDotaz: {pr}")
-                    st.markdown(res.text)
-                    st.session_state.chat_history.append({"role": "assistant", "content": res.text})
-                except: st.error("Chyba AI.")
+    # 1. Navigační tlačítko ZPĚT (Vždy nahoře, nepřekrývá se)
+    # Používáme container pro vycentrování a odsazení
+    st.markdown('<div class="nav-button-container">', unsafe_allow_html=True)
+    c_nav1, c_nav2, c_nav3 = st.columns([1, 2, 1])
+    with c_nav2:
+        if st.button("🏠 Zpět na Domovskou stránku", use_container_width=True):
