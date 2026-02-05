@@ -77,7 +77,7 @@ def nacti_kompletni_pocasi():
     return data_output
 
 # ==========================================
-# 3. DESIGN A STYLY
+# 3. DESIGN A STYLY (CSS)
 # ==========================================
 st.markdown("""
 <style>
@@ -121,7 +121,7 @@ st.markdown("""
     /* Styly pro chat uvítání */
     .chat-welcome-container {
         text-align: center;
-        padding-top: 10vh; /* Vertikální centrování */
+        padding-top: 5vh; 
         padding-bottom: 5vh;
     }
     .chat-welcome-icon { font-size: 60px; display: block; margin-bottom: 20px; }
@@ -131,12 +131,11 @@ st.markdown("""
     /* Obecné styly tlačítek */
     .stButton > button { border-radius: 50px !important; font-weight: bold; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); }
     .stButton > button:hover { transform: scale(1.02); background: rgba(255,255,255,0.1); }
-    /* Specifický styl pro navigační tlačítko v chatu */
-    .nav-button-container { display: flex; justify-content: center; margin-bottom: 20px; }
-    .nav-button-container .stButton { width: auto; }
+    
+    /* Kontejner pro tlačítko Zpět */
+    .nav-header { padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px; }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ==========================================
 # 4. POMOCNÉ FUNKCE DATA
@@ -150,23 +149,20 @@ def nacti_data_sheets(nazev_listu):
     except: return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
-# 5. HLAVNÍ LOGIKA STRÁNEK
+# 5. STRÁNKA: DOMŮ
 # ==========================================
-
-# --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
-    # Navigace Domů -> Chat
+    # Horní navigace na Chat
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
          if st.button("💬 Přejít na Kvádr AI Chat", use_container_width=True, type="primary"):
-            st.session_state.page = "AI Chat"; st.rerun()
+            st.session_state.page = "AI Chat"
+            st.rerun()
 
     st.markdown('<div style="text-align:center; padding-top:20px; margin-bottom:10px;"><div style="background:rgba(59,130,246,0.1); padding:15px; border-radius:20px; display:inline-block; font-size:40px;">🏠</div></div>', unsafe_allow_html=True)
     
-    # NAČTENÍ POČASÍ
+    # Počasí
     weather_data = nacti_kompletni_pocasi()
-
-    # 1. HORNÍ LIŠTA
     html_top = '<div class="weather-grid-top">'
     for mesto, data in weather_data.items():
         html_top += f'<div class="weather-box-small"><div class="wb-city">{mesto}</div><div class="wb-temp"><span class="wb-icon">{data["aktualni_ikona"]}</span>{data["aktualni_teplota"]}</div></div>'
@@ -181,37 +177,66 @@ if st.session_state.page == "Domů":
             st.session_state.show_weather_details = not st.session_state.show_weather_details
             st.rerun()
 
-    # 2. DETAILNÍ PŘEDPOVĚĎ
     if st.session_state.show_weather_details:
         st.write("---")
         cols = st.columns(2)
         idx = 0
         for mesto, data in weather_data.items():
             with cols[idx % 2]:
-                html_rows = ""
-                for den in data['predpoved']:
-                    html_rows += f'<div class="forecast-row"><span class="f-date">{den["den"]}</span><span class="f-icon">{den["pocasi"]}</span><span class="f-temp">{den["teplota"]}</span></div>'
-                
-                st.markdown(f"""
-                <div class="city-detail-card">
-                    <div class="city-title">{mesto}</div>
-                    {html_rows}
-                </div>
-                """, unsafe_allow_html=True)
+                html_rows = "".join([f'<div class="forecast-row"><span class="f-date">{d["den"]}</span><span class="f-icon">{d["pocasi"]}</span><span class="f-temp">{d["teplota"]}</span></div>' for d in data['predpoved']])
+                st.markdown(f'<div class="city-detail-card"><div class="city-title">{mesto}</div>{html_rows}</div>', unsafe_allow_html=True)
             idx += 1
-        st.write("---")
 
-    # 3. NOVINKY
+    # Oznámení
     st.markdown('<h3 style="text-align:center; margin-top:20px; font-size:20px;">Oznámení</h3>', unsafe_allow_html=True)
     df = nacti_data_sheets("List 2")
     for zprava in df['zprava'].dropna():
         st.markdown(f'<div style="background:rgba(15,23,42,0.6); border:1px solid #1e293b; padding:20px; border-radius:15px; margin:10px auto; max-width:800px; font-size:16px;">{zprava}</div>', unsafe_allow_html=True)
 
-# --- AI CHAT STRÁNKA ---
+# ==========================================
+# 6. STRÁNKA: AI CHAT
+# ==========================================
 elif st.session_state.page == "AI Chat":
-    # 1. Navigační tlačítko ZPĚT (Vždy nahoře, nepřekrývá se)
-    # Používáme container pro vycentrování a odsazení
-    st.markdown('<div class="nav-button-container">', unsafe_allow_html=True)
-    c_nav1, c_nav2, c_nav3 = st.columns([1, 2, 1])
+    # FIX: Horní lišta s tlačítkem Zpět
+    st.markdown('<div class="nav-header">', unsafe_allow_html=True)
+    c_nav1, c_nav2, c_nav3 = st.columns([1, 1.5, 1])
     with c_nav2:
         if st.button("🏠 Zpět na Domovskou stránku", use_container_width=True):
+            st.session_state.page = "Domů"
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Logika zobrazení obsahu (Uvítání vs Chat)
+    if not st.session_state.chat_history:
+        # Úvodní obrazovka (Image 3 styl)
+        st.markdown("""
+            <div class="chat-welcome-container">
+                <span class="chat-welcome-icon">✨</span>
+                <h1 class="chat-welcome-title">Vítejte v KVÁDR AI</h1>
+                <p class="chat-welcome-subtitle">Zeptejte se mě na cokoliv.</p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Historie chatu (Image 2 styl)
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+    # Chat input
+    if pr := st.chat_input("Napište zprávu..."):
+        st.session_state.chat_history.append({"role": "user", "content": pr})
+        with st.chat_message("user"):
+            st.markdown(pr)
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Kvádr AI přemýšlí..."):
+                try:
+                    df_ai = nacti_data_sheets("List 1")
+                    ctx = " ".join(df_ai['zprava'].astype(str).tolist())
+                    model = genai.GenerativeModel(st.session_state.model_name)
+                    res = model.generate_content(f"Kontext: {ctx}\nDotaz: {pr}")
+                    st.markdown(res.text)
+                    st.session_state.chat_history.append({"role": "assistant", "content": res.text})
+                except Exception as e:
+                    st.error(f"Chyba spojení s AI: {e}")
+        st.rerun()
