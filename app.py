@@ -6,35 +6,38 @@ import requests
 from datetime import datetime, timedelta
 
 # ==========================================
-# 1. KONFIGURACE (AUTOMATICKÁ DETEKCE MODELU)
+# 1. INICIALIZACE STAVU (ZÁCHRANA PŘED CHYBAMI)
 # ==========================================
+if "page" not in st.session_state:
+    st.session_state.page = "Domů"
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+if "show_weather_details" not in st.session_state:
+    st.session_state.show_weather_details = False
+
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
+# Inicializace AI modelu (automaticky najde ten funkční)
 if "model_name" not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        
-        # Najdeme všechny modely, které máš dostupné
+        # Najdeme modely, které skutečně fungují pod tvým klíčem
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Zkusíme najít verzi "flash", která je nejrychlejší
         flash_models = [m for m in available_models if "flash" in m.lower()]
         
         if flash_models:
-            st.session_state.model_name = flash_models[0] # Vybere např. 'models/gemini-1.5-flash'
+            st.session_state.model_name = flash_models[0]
         elif available_models:
-            st.session_state.model_name = available_models[0] # Vybere jakýkoliv funkční
+            st.session_state.model_name = available_models[0]
         else:
-            st.session_state.model_name = "gemini-1.5-flash" # Poslední záchrana
-            
+            st.session_state.model_name = "gemini-1.5-flash"
     except Exception as e:
-        st.error(f"Nepodařilo se načíst seznam modelů: {e}")
         st.session_state.model_name = "gemini-1.5-flash"
 
-# Pro tvoji kontrolu - vypíše do bočního panelu, co aplikace vybrala
-st.sidebar.caption(f"Aktivní AI model: {st.session_state.model_name}")
 # ==========================================
-# 2. LOGIKA POČASÍ
+# 2. POMOCNÉ FUNKCE
 # ==========================================
 SOURADNICE = {
     "Nové Město n. M.": (50.344, 16.151),
@@ -63,6 +66,15 @@ def nacti_kompletni_pocasi():
             data_output[mesto] = {"aktualni_teplota": "--", "aktualni_ikona": "⚠️", "predpoved": []}
     return data_output
 
+def nacti_data_sheets(nazev_listu):
+    try:
+        base_url = st.secrets["GSHEET_URL"]
+        sheet_id = base_url.split("/d/")[1].split("/")[0]
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
+        return pd.read_csv(csv_url)
+    except: 
+        return pd.DataFrame(columns=['zprava'])
+
 # ==========================================
 # 3. DESIGN A STYLY
 # ==========================================
@@ -75,17 +87,8 @@ st.markdown("""
     .wb-temp { font-size: 18px; font-weight: bold; }
     .city-detail-card { background: rgba(15, 23, 42, 0.8); border-left: 4px solid #3b82f6; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
     .forecast-row { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 5px 0; font-size: 13px; }
-    .stButton > button { border-radius: 50px !important; }
 </style>
 """, unsafe_allow_html=True)
-
-def nacti_data_sheets(nazev_listu):
-    try:
-        base_url = st.secrets["GSHEET_URL"]
-        sheet_id = base_url.split("/d/")[1].split("/")[0]
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
-        return pd.read_csv(csv_url)
-    except: return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
 # 4. NAVIGACE
@@ -94,10 +97,16 @@ col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
 with col_nav2:
     if st.session_state.page == "Domů":
         if st.button("💬 Otevřít AI Chat", use_container_width=True, type="primary"):
-            st.session_state.page = "AI Chat"; st.rerun()
+            st.session_state.page = "AI Chat"
+            st.rerun()
     else:
         if st.button("🏠 Zpět Domů", use_container_width=True):
-            st.session_state.page = "Domů"; st.rerun()
+            st.session_state.page = "Domů"
+            st.rerun()
+
+# ==========================================
+# 5. OBSAH STRÁNEK
+# ==========================================
 
 # --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
@@ -119,41 +128,46 @@ if st.session_state.page == "Domů":
                 st.markdown(f'<div class="city-detail-card"><b style="color:#60a5fa">{mesto}</b>{rows}</div>', unsafe_allow_html=True)
 
     st.markdown('<h3 style="text-align:center;">Oznámení</h3>', unsafe_allow_html=True)
-    df = nacti_data_sheets("List 2")
-    for z in df['zprava'].dropna():
-        st.info(z)
+    df_oznameni = nacti_data_sheets("List 2")
+    if not df_oznameni.empty:
+        for z in df_oznameni['zprava'].dropna():
+            st.info(z)
 
-# --- AI CHAT ---
+# --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
-    # 1. Zobrazení historie (vždy nahoře)
+    st.sidebar.caption(f"Model: {st.session_state.model_name}")
+    if st.sidebar.button("Vymazat historii"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    # Zobrazení historie
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # 2. Vstup od uživatele
-    if prompt := st.chat_input("Napište zprávu..."):
-        # Okamžité zobrazení a uložení zprávy uživatele
+    # Vstup uživatele
+    if prompt := st.chat_input("Napište zprávu pro Kvádr AI..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # 3. Generování odpovědi
         with st.chat_message("assistant"):
-            with st.spinner("Kvádr AI přemýšlí..."):
+            with st.spinner("Přemýšlím..."):
                 try:
+                    # Načtení kontextu z tabulky
                     df_ai = nacti_data_sheets("List 1")
-                    ctx = " ".join(df_ai['zprava'].astype(str).tolist())
-                    model = genai.GenerativeModel(st.session_state.model_name)
-                    # Přidání systémové instrukce, aby robot věděl, co má dělat
-                    full_prompt = f"Jsi asistent Kvádr AI. Odpovídej česky. Kontext: {ctx}\nDotaz: {prompt}"
-                    res = model.generate_content(full_prompt)
+                    kontext_text = " ".join(df_ai['zprava'].astype(str).tolist())
                     
-                    if res.text:
-                        odpoved = res.text
-                        st.markdown(odpoved)
-                        st.session_state.chat_history.append({"role": "assistant", "content": odpoved})
-                        st.rerun() # Důležité: Synchronizuje stav po odpovědi
+                    model = genai.GenerativeModel(st.session_state.model_name)
+                    plny_dotaz = f"Jsi Kvádr AI. Odpovídej česky na základě tohoto kontextu: {kontext_text}\n\nUživatel: {prompt}"
+                    
+                    response = model.generate_content(plny_dotaz)
+                    
+                    if response.text:
+                        st.markdown(response.text)
+                        st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                        st.rerun()
                     else:
-                        st.warning("Robot vygeneroval prázdnou odpověď (možná bezpečnostní filtr).")
+                        st.error("AI vrátila prázdnou odpověď.")
                 except Exception as e:
-                    st.error(f"Chyba: {e}")
+                    st.error(f"Chyba při komunikaci s AI: {e}")
