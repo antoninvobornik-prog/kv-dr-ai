@@ -20,25 +20,24 @@ if "page" not in st.session_state:
     st.session_state.page = "Domů"
 
 # ==========================================
-# 2. DESIGN PODLE PŘEDLOHY (FOTKY)
+# 2. DESIGN PODLE PŘEDLOHY (FOTKY) + ÚPRAVY
 # ==========================================
 st.markdown("""
 <style>
-    /* Pozadí s gradientem jako na fotce */
+    /* Pozadí s gradientem */
     .stApp {
         background: radial-gradient(circle at center, #1a2c4e 0%, #070b14 100%);
         color: #ffffff;
         font-family: 'Inter', sans-serif;
     }
 
-    /* Skrytí standardního Streamlit menu */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 
     /* Centrování uvítacího obsahu */
     .welcome-container {
         text-align: center;
-        padding-top: 50px;
+        padding-top: 40px;
     }
     .welcome-logo {
         background: rgba(59, 130, 246, 0.1);
@@ -52,53 +51,50 @@ st.markdown("""
     .welcome-subtitle { font-size: 18px; color: #94a3b8; margin-bottom: 30px; }
     .warning-text { font-size: 14px; color: #64748b; margin-top: 20px; }
 
-    /* Horní oválná tlačítka */
-    .nav-btn-container { display: flex; justify-content: center; margin-bottom: 30px; }
-    
+    /* Horní blikající efekt pro aktivní tlačítko */
     @keyframes pulse {
         0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
-        70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+        70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
         100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-    }
-
-    .pill-active {
-        background: linear-gradient(90deg, #0ea5e9, #2563eb);
-        border-radius: 50px; padding: 12px 35px;
-        font-weight: bold; font-size: 18px;
-        animation: pulse 2s infinite; border: none; color: white;
-    }
-    .pill-static {
-        background: #1e293b; border-radius: 50px;
-        padding: 12px 35px; color: #94a3b8;
-        font-size: 18px; border: 1px solid #334155;
     }
 
     /* Karty novinek */
     .news-card {
         background: rgba(15, 23, 42, 0.6);
         border: 1px solid #1e293b;
-        padding: 20px; border-radius: 15px;
-        margin: 10px auto; max-width: 800px;
+        padding: 25px; border-radius: 15px;
+        margin: 15px auto; max-width: 800px;
+        font-size: 18px; line-height: 1.6;
+    }
+
+    /* Styl pro tlačítka v horní navigaci */
+    .stButton > button {
+        border-radius: 50px !important;
+        font-weight: bold !important;
+        font-size: 18px !important;
+        transition: 0.3s;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. LOGIKA NAVIGACE (OPRAVA NADPISŮ)
+# 3. LOGIKA NAVIGACE (TLAČÍTKA NAHOŘE)
 # ==========================================
 cols = st.columns([1, 2, 1])
 with cols[1]:
     if st.session_state.page == "Domů":
-        if st.button("💬 Přejít na Kvádr AI Chat", use_container_width=True):
+        # Tlačítko pro přechod do chatu, které bliká (definováno přes CSS animaci u aktivního prvku)
+        if st.button("💬 Přejít na Kvádr AI Chat", use_container_width=True, type="primary"):
             st.session_state.page = "AI Chat"
             st.rerun()
     else:
+        # Tlačítko pro návrat domů s emoji
         if st.button("🏠 Zpět na Domovskou stránku", use_container_width=True):
             st.session_state.page = "Domů"
             st.rerun()
 
 # ==========================================
-# 4. OBSAH STRÁNEK
+# 4. POMOCNÉ FUNKCE
 # ==========================================
 def nacti_data(nazev_listu):
     try:
@@ -109,40 +105,47 @@ def nacti_data(nazev_listu):
         return pd.read_csv(csv_url)
     except: return pd.DataFrame(columns=['zprava'])
 
+# ==========================================
+# 5. OBSAH STRÁNEK
+# ==========================================
+
 # --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
     st.markdown("""
         <div class="welcome-container">
-            <div class="welcome-logo"><span style="font-size: 40px;">✨</span></div>
-            <div class="welcome-title">Oznámení a novinky</div>
-            <div class="welcome-subtitle">Aktuální informace z naší základny</div>
+            <div class="welcome-logo"><span style="font-size: 40px;">🏠</span></div>
+            <div class="welcome-title">🏠 Domovská stránka</div>
+            <div class="welcome-subtitle">Aktuální oznámení a důležité novinky</div>
         </div>
     """, unsafe_allow_html=True)
     
     df_zpravy = nacti_data("List 2")
-    for zprava in df_zpravy['zprava'].dropna():
-        st.markdown(f'<div class="news-card">{zprava}</div>', unsafe_allow_html=True)
+    if not df_zpravy.empty:
+        for zprava in df_zpravy['zprava'].dropna():
+            st.markdown(f'<div class="news-card">{zprava}</div>', unsafe_allow_html=True)
+    else:
+        st.info("Zatím zde nejsou žádná nová oznámení.")
 
 # --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
-    # Uvítací obrazovka v chatu (podle fotky)
+    # Uvítací obrazovka chatu
     if "chat_history" not in st.session_state or len(st.session_state.chat_history) == 0:
         st.markdown("""
             <div class="welcome-container">
                 <div class="welcome-logo"><span style="font-size: 40px;">✨</span></div>
                 <div class="welcome-title">Vítejte v KVÁDR AI</div>
-                <div class="welcome-subtitle">Jsem váš AI asistent. Zeptejte se mě na cokoliv a rád vám pomohu.</div>
-                <div class="warning-text">ⓘ Kvádr AI může dělat chyby, takže vše kontrolujte.</div>
+                <div class="welcome-subtitle">Jsem váš osobní asistent. Ptejte se mě na cokoliv.</div>
+                <div class="warning-text">ⓘ Kvádr AI může dělat chyby, kontrolujte důležité informace.</div>
             </div>
         """, unsafe_allow_html=True)
         st.session_state.chat_history = []
 
-    # Zobrazení zpráv
+    # Zobrazení historie
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Chat vstup dole
+    # Chat vstup
     if prompt := st.chat_input("Napište svou zprávu..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -154,9 +157,11 @@ elif st.session_state.page == "AI Chat":
                     df_ai = nacti_data("List 1")
                     model = genai.GenerativeModel(st.session_state.model_name)
                     kontext = " ".join(df_ai['zprava'].astype(str).tolist())
-                    full_prompt = f"Jsi Kvádr AI Asistent. Tvé znalosti: {kontext}. Odpověz lidsky a mile na: {prompt}"
+                    
+                    full_prompt = f"Jsi Kvádr AI Asistent. Tvé znalosti jsou: {kontext}. Odpověz na dotaz lidsky, přátelsky a srozumitelně: {prompt}"
+                    
                     response = model.generate_content(full_prompt)
                     st.markdown(response.text)
                     st.session_state.chat_history.append({"role": "assistant", "content": response.text})
                 except:
-                    st.error("Limit vyčerpán, zkus to za chvíli!")
+                    st.error("Omlouvám se, momentálně mám plnou hlavu práce. Zkus to za minutku!")
