@@ -21,10 +21,16 @@ if "page" not in st.session_state: st.session_state.page = "Domů"
 if "show_weather_details" not in st.session_state: st.session_state.show_weather_details = False
 
 # ==========================================
-# 2. CHYTRÉ POČASÍ (Open-Meteo API)
+# 2. LOGIKA POČASÍ (RYCHLÁ & BEZ CHYB)
 # ==========================================
+SOURADNICE = {
+    "Nové Město n. M.": (50.344, 16.151),
+    "Bělá": (50.534, 14.807),
+    "Praha": (50.075, 14.437),
+    "Hradec Králové": (50.210, 15.832)
+}
+
 def get_wmo_emoji(code):
-    """Převede číselný kód počasí na hezkou ikonu"""
     if code == 0: return "☀️ Jasno"
     if code in [1, 2, 3]: return "⛅ Polojasno"
     if code in [45, 48]: return "🌫️ Mlhavo"
@@ -34,47 +40,39 @@ def get_wmo_emoji(code):
     if code in [95, 96, 99]: return "⛈️ Bouřka"
     return "☁️ Zataženo"
 
-def nacti_aktualni(mesto):
-    """Rychlé aktuální počasí pro horní lištu"""
-    try:
-        url = f"https://wttr.in/{mesto}?format=%C+%t&m&lang=cs"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            return response.text.replace("+", "")
-        return "N/A"
-    except: return "Chyba"
+@st.cache_data(ttl=1800)
+def nacti_kompletni_pocasi():
+    data_output = {}
+    for mesto, (lat, lon) in SOURADNICE.items():
+        try:
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto"
+            res = requests.get(url, timeout=3).json()
+            
+            curr_temp = round(res["current"]["temperature_2m"])
+            curr_code = res["current"]["weathercode"]
+            
+            daily = res.get("daily", {})
+            predpoved_list = []
+            for i in range(7):
+                datum = datetime.now() + timedelta(days=i)
+                den_nazev = datum.strftime("%d.%m.")
+                kod = daily["weathercode"][i]
+                t_min = daily["temperature_2m_min"][i]
+                t_max = daily["temperature_2m_max"][i]
+                predpoved_list.append({
+                    "den": den_nazev,
+                    "pocasi": get_wmo_emoji(kod),
+                    "teplota": f"{round(t_min)}° / {round(t_max)}°"
+                })
 
-def nacti_predpoved_7dni(lat, lon):
-    """Stáhne přesná data na 7 dní z Open-Meteo"""
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto"
-        res = requests.get(url, timeout=5).json()
-        
-        daily = res.get("daily", {})
-        dni = []
-        for i in range(7):
-            datum = datetime.now() + timedelta(days=i)
-            den_nazev = datum.strftime("%d.%m.")
-            kod = daily["weathercode"][i]
-            temp_max = daily["temperature_2m_max"][i]
-            temp_min = daily["temperature_2m_min"][i]
-            dni.append({
-                "den": den_nazev,
-                "pocasi": get_wmo_emoji(kod),
-                "teplota": f"{round(temp_min)}°C / {round(temp_max)}°C"
-            })
-        return dni
-    except:
-        return []
-
-# Souřadnice měst pro maximální přesnost (Praha, HK, NMNM, Bělá)
-SOURADNICE = {
-    "Nové Město n. M.": (50.344, 16.151),
-    "Bělá": (50.534, 14.807), # Bělá pod Bezdězem (pokud myslíte jinou, stačí změnit čísla)
-    "Praha": (50.075, 14.437),
-    "Hradec Králové": (50.210, 15.832)
-}
+            data_output[mesto] = {
+                "aktualni_teplota": f"{curr_temp}°C",
+                "aktualni_ikona": get_wmo_emoji(curr_code).split(" ")[0],
+                "predpoved": predpoved_list
+            }
+        except:
+            data_output[mesto] = {"aktualni_teplota": "--", "aktualni_ikona": "⚠️", "predpoved": []}
+    return data_output
 
 # ==========================================
 # 3. DESIGN A STYLY
@@ -88,39 +86,39 @@ st.markdown("""
     }
     #MainMenu, footer {visibility: hidden;}
 
-    /* Horní rychlé počasí */
-    .weather-grid-top {
-        display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 20px;
-    }
+    /* Horní lišta */
+    .weather-grid-top { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 20px; }
     .weather-box-small {
-        background: rgba(59, 130, 246, 0.1);
-        border: 1px solid rgba(59, 130, 246, 0.3);
-        padding: 10px 15px; border-radius: 12px;
-        text-align: center; flex: 1; min-width: 120px;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        padding: 12px 15px; border-radius: 12px;
+        text-align: center; flex: 1; min-width: 130px;
+        backdrop-filter: blur(5px);
     }
-    .wb-city { font-size: 12px; color: #94a3b8; text-transform: uppercase; font-weight: bold; }
-    .wb-temp { font-size: 16px; font-weight: bold; color: #ffffff; margin-top: 5px; }
+    .wb-city { font-size: 13px; color: #cbd5e1; text-transform: uppercase; font-weight: 600; }
+    .wb-temp { font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 2px; }
+    .wb-icon { font-size: 20px; margin-right: 5px; }
 
-    /* Detailní karta města */
+    /* Detailní karty - OPRAVA */
     .city-detail-card {
         background: rgba(15, 23, 42, 0.8);
-        border-left: 5px solid #3b82f6;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
+        border-left: 4px solid #3b82f6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
     }
-    .city-title { font-size: 22px; font-weight: bold; margin-bottom: 15px; color: #60a5fa; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+    .city-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #60a5fa; border-bottom: 1px solid #334155; padding-bottom: 5px; }
     
-    /* Řádky předpovědi */
     .forecast-row {
         display: flex; justify-content: space-between; align-items: center;
-        padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+        padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
     }
-    .f-date { width: 60px; color: #94a3b8; font-size: 14px; }
-    .f-icon { flex-grow: 1; text-align: left; padding-left: 15px; font-size: 15px; }
-    .f-temp { font-weight: bold; color: #ffffff; font-size: 15px; }
+    .f-date { width: 50px; color: #94a3b8; font-size: 14px; }
+    .f-icon { flex-grow: 1; text-align: left; padding-left: 15px; font-size: 14px; }
+    .f-temp { font-weight: bold; color: #e2e8f0; font-size: 14px; }
 
-    .stButton > button { border-radius: 50px !important; font-weight: bold; }
+    .stButton > button { border-radius: 50px !important; font-weight: bold; transition: 0.2s; }
+    .stButton > button:hover { transform: scale(1.02); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -137,9 +135,9 @@ with c2:
             st.session_state.page = "Domů"; st.rerun()
 
 # ==========================================
-# 5. DATA A LOGIKA
+# 5. DATA A UI
 # ==========================================
-def nacti_data(nazev_listu):
+def nacti_data_sheets(nazev_listu):
     try:
         base_url = st.secrets["GSHEET_URL"]
         sheet_id = base_url.split("/d/")[1].split("/")[0]
@@ -147,27 +145,21 @@ def nacti_data(nazev_listu):
         return pd.read_csv(csv_url)
     except: return pd.DataFrame(columns=['zprava'])
 
-# --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
     st.markdown('<div style="text-align:center; padding-top:20px; margin-bottom:10px;"><div style="background:rgba(59,130,246,0.1); padding:15px; border-radius:20px; display:inline-block; font-size:40px;">🏠</div></div>', unsafe_allow_html=True)
-    st.markdown('<h2 style="text-align:center; margin:0;">Domovská stránka</h2>', unsafe_allow_html=True)
     
-    # 1. Horní rychlý přehled (4 města)
-    w_nmnm = nacti_aktualni("Nove+Mesto+nad+Metuji")
-    w_bela = nacti_aktualni("Bela,CZ")
-    w_praha = nacti_aktualni("Prague")
-    w_hk = nacti_aktualni("Hradec+Kralove")
+    # NAČTENÍ POČASÍ
+    weather_data = nacti_kompletni_pocasi()
 
-    st.markdown(f"""
-    <div class="weather-grid-top">
-        <div class="weather-box-small"><div class="wb-city">Nové Město</div><div class="wb-temp">{w_nmnm}</div></div>
-        <div class="weather-box-small"><div class="wb-city">Bělá</div><div class="wb-temp">{w_bela}</div></div>
-        <div class="weather-box-small"><div class="wb-city">Praha</div><div class="wb-temp">{w_praha}</div></div>
-        <div class="weather-box-small"><div class="wb-city">Hradec Králové</div><div class="wb-temp">{w_hk}</div></div>
-    </div>
-    """, unsafe_allow_html=True)
+    # 1. HORNÍ LIŠTA (bez odsazování HTML řetězců)
+    html_top = '<div class="weather-grid-top">'
+    for mesto, data in weather_data.items():
+        # Vše v jednom řádku, aby se zabránilo formátování jako kód
+        html_top += f'<div class="weather-box-small"><div class="wb-city">{mesto}</div><div class="wb-temp"><span class="wb-icon">{data["aktualni_ikona"]}</span>{data["aktualni_teplota"]}</div></div>'
+    html_top += '</div>'
+    st.markdown(html_top, unsafe_allow_html=True)
 
-    # Tlačítko pro zobrazení/skrytí detailů
+    # Tlačítko Podrobnosti
     col_btn1, col_btn2, col_btn3 = st.columns([1,2,1])
     with col_btn2:
         btn_label = "❌ Zavřít podrobnosti" if st.session_state.show_weather_details else "📅 Podrobná předpověď (7 dní)"
@@ -175,43 +167,33 @@ if st.session_state.page == "Domů":
             st.session_state.show_weather_details = not st.session_state.show_weather_details
             st.rerun()
 
-    # 2. Sekce podrobností (pokud je aktivní)
+    # 2. DETAILNÍ PŘEDPOVĚĎ - OPRAVENO ZOBRAZENÍ
     if st.session_state.show_weather_details:
         st.write("---")
-        cols = st.columns(2) # Rozdělení do dvou sloupců pro kompaktnost na PC
-        
-        mesta_items = list(SOURADNICE.items())
-        
-        # Procházíme města a tvoříme karty
-        for i, (nazev, (lat, lon)) in enumerate(mesta_items):
-            with cols[i % 2]: # Střídání sloupců
-                predpoved = nacti_predpoved_7dni(lat, lon)
-                
+        cols = st.columns(2)
+        idx = 0
+        for mesto, data in weather_data.items():
+            with cols[idx % 2]:
+                # ZDE BYLA CHYBA: Odstranil jsem odsazení v HTML řetězcích
                 html_rows = ""
-                for den in predpoved:
-                    html_rows += f"""
-                    <div class="forecast-row">
-                        <span class="f-date">{den['den']}</span>
-                        <span class="f-icon">{den['pocasi']}</span>
-                        <span class="f-temp">{den['teplota']}</span>
-                    </div>
-                    """
+                for den in data['predpoved']:
+                    html_rows += f'<div class="forecast-row"><span class="f-date">{den["den"]}</span><span class="f-icon">{den["pocasi"]}</span><span class="f-temp">{den["teplota"]}</span></div>'
                 
                 st.markdown(f"""
                 <div class="city-detail-card">
-                    <div class="city-title">{nazev}</div>
+                    <div class="city-title">{mesto}</div>
                     {html_rows}
                 </div>
                 """, unsafe_allow_html=True)
+            idx += 1
         st.write("---")
 
-    # 3. Novinky
-    st.markdown('<h3 style="text-align:center; margin-top:30px;">Oznámení</h3>', unsafe_allow_html=True)
-    df = nacti_data("List 2")
+    # 3. NOVINKY
+    st.markdown('<h3 style="text-align:center; margin-top:20px; font-size:20px;">Oznámení</h3>', unsafe_allow_html=True)
+    df = nacti_data_sheets("List 2")
     for zprava in df['zprava'].dropna():
-        st.markdown(f'<div style="background:rgba(15,23,42,0.6); border:1px solid #1e293b; padding:20px; border-radius:15px; margin:10px auto; max-width:800px;">{zprava}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:rgba(15,23,42,0.6); border:1px solid #1e293b; padding:20px; border-radius:15px; margin:10px auto; max-width:800px; font-size:16px;">{zprava}</div>', unsafe_allow_html=True)
 
-# --- CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
     if "chat_history" not in st.session_state: st.session_state.chat_history = []
     
@@ -227,7 +209,7 @@ elif st.session_state.page == "AI Chat":
         with st.chat_message("assistant"):
             with st.spinner("Kvádr AI přemýšlí..."):
                 try:
-                    df_ai = nacti_data("List 1")
+                    df_ai = nacti_data_sheets("List 1")
                     ctx = " ".join(df_ai['zprava'].astype(str).tolist())
                     model = genai.GenerativeModel(st.session_state.model_name)
                     res = model.generate_content(f"Kontext: {ctx}\nDotaz: {pr}")
