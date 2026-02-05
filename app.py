@@ -111,7 +111,7 @@ with col_nav2:
 # --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
     # --- PŘIDANÉ NADPISY ---
-    st.title("🏙️ Vítejte v Kvádr AI")
+    st.title("🏙️ Vítejte, Domovská stránka")
     st.subheader("Váš chytrý rozcestník a asistent")
     st.write("---") # Oddělovací čára
 
