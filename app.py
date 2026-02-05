@@ -20,15 +20,15 @@ if "page" not in st.session_state:
     st.session_state.page = "Domů"
 
 # ==========================================
-# 2. FUNKCE PRO POČASÍ (API NMNM & BĚLÁ)
+# 2. FUNKCE PRO POČASÍ (°C A ČEŠTINA)
 # ==========================================
 def nacti_pocasi(mesto):
     try:
-        # Použití wttr.in pro jednoduché a rychlé načítání bez klíče
-        url = f"https://wttr.in/{mesto}?format=%C+%t"
+        # m = metrický systém (°C), lang cs = čeština
+        url = f"https://wttr.in/{mesto}?format=%C+%t&m&lang=cs"
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
-            return response.text
+            return response.text.replace("+", "")
         return "Nedostupné"
     except:
         return "Chyba spojení"
@@ -38,19 +38,39 @@ def nacti_pocasi(mesto):
 # ==========================================
 st.markdown("""
 <style>
+    /* Pozadí a základní barvy */
     .stApp {
         background: radial-gradient(circle at center, #1a2c4e 0%, #070b14 100%);
         color: #ffffff;
+        font-family: 'Inter', sans-serif;
     }
-    .welcome-container { text-align: center; padding-top: 20px; }
-    .welcome-logo { background: rgba(59, 130, 246, 0.1); border-radius: 20px; padding: 20px; display: inline-block; }
-    
+
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* Centrování uvítacího obsahu */
+    .welcome-container {
+        text-align: center;
+        padding-top: 20px;
+    }
+    .welcome-logo {
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 20px;
+        padding: 20px;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
+    .welcome-title { font-size: 32px; font-weight: bold; margin-bottom: 5px; }
+    .welcome-subtitle { font-size: 18px; color: #94a3b8; margin-bottom: 20px; }
+
     /* Karty počasí */
     .weather-grid {
         display: flex;
         justify-content: center;
         gap: 15px;
         margin-bottom: 30px;
+        flex-wrap: wrap;
     }
     .weather-box {
         background: rgba(255, 255, 255, 0.05);
@@ -60,14 +80,24 @@ st.markdown("""
         text-align: center;
         min-width: 160px;
     }
-    .weather-city { font-size: 14px; color: #94a3b8; margin-bottom: 5px; }
+    .weather-city { font-size: 14px; color: #94a3b8; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
     .weather-data { font-size: 18px; font-weight: bold; color: #3b82f6; }
 
+    /* Karty novinek */
     .news-card {
         background: rgba(15, 23, 42, 0.6);
         border: 1px solid #1e293b;
-        padding: 20px; border-radius: 15px;
-        margin: 10px auto; max-width: 800px;
+        padding: 25px; border-radius: 15px;
+        margin: 15px auto; max-width: 800px;
+        font-size: 18px; line-height: 1.6;
+    }
+
+    /* Styl pro tlačítka v horní navigaci */
+    .stButton > button {
+        border-radius: 50px !important;
+        font-weight: bold !important;
+        font-size: 18px !important;
+        transition: 0.3s;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -87,21 +117,32 @@ with cols[1]:
             st.rerun()
 
 # ==========================================
-# 5. OBSAH
+# 5. POMOCNÉ FUNKCE DATA
 # ==========================================
 def nacti_data(nazev_listu):
     try:
         base_url = st.secrets["GSHEET_URL"]
         sheet_id = base_url.split("/d/")[1].split("/")[0]
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
+        nazev_opraveny = urllib.parse.quote(nazev_listu)
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={nazev_opraveny}"
         return pd.read_csv(csv_url)
     except: return pd.DataFrame(columns=['zprava'])
 
-# --- DOMŮ ---
+# ==========================================
+# 6. OBSAH STRÁNEK
+# ==========================================
+
+# --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
-    st.markdown('<div class="welcome-container"><div class="welcome-logo"><span style="font-size: 40px;">🏠</span></div></div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="welcome-container">
+            <div class="welcome-logo"><span style="font-size: 40px;">🏠</span></div>
+            <div class="welcome-title">🏠 Domovská stránka</div>
+            <div class="welcome-subtitle">Aktuální přehled a počasí</div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    # SEKCE POČASÍ (NMNM a Bělá)
+    # Načtení a zobrazení počasí
     nmnm_w = nacti_pocasi("Nove+Mesto+nad+Metuji")
     bela_w = nacti_pocasi("Bela")
     
@@ -118,28 +159,46 @@ if st.session_state.page == "Domů":
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<h2 style="text-align:center;">Oznámení a novinky</h2>', unsafe_allow_html=True)
+    # Načtení oznámení z tabulky
     df_zpravy = nacti_data("List 2")
-    for zprava in df_zpravy['zprava'].dropna():
-        st.markdown(f'<div class="news-card">{zprava}</div>', unsafe_allow_html=True)
+    if not df_zpravy.empty:
+        for zprava in df_zpravy['zprava'].dropna():
+            st.markdown(f'<div class="news-card">{zprava}</div>', unsafe_allow_html=True)
+    else:
+        st.info("Zatím zde nejsou žádná nová oznámení.")
 
-# --- CHAT ---
+# --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
-    if "chat_history" not in st.session_state: st.session_state.chat_history = []
-    
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
+    if "chat_history" not in st.session_state or len(st.session_state.chat_history) == 0:
+        st.markdown("""
+            <div class="welcome-container">
+                <div class="welcome-logo"><span style="font-size: 40px;">✨</span></div>
+                <div class="welcome-title">Vítejte v KVÁDR AI</div>
+                <div class="welcome-subtitle">Zeptejte se na cokoliv ohledně Kvádru.</div>
+            </div>
+        """, unsafe_allow_html=True)
+        st.session_state.chat_history = []
 
+    # Zobrazení historie
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat vstup
     if prompt := st.chat_input("Napište svou zprávu..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
         with st.chat_message("assistant"):
             with st.spinner("Kvádr AI přemýšlí..."):
                 try:
                     df_ai = nacti_data("List 1")
                     model = genai.GenerativeModel(st.session_state.model_name)
                     kontext = " ".join(df_ai['zprava'].astype(str).tolist())
-                    response = model.generate_content(f"Kontext: {kontext}\nDotaz: {prompt}")
+                    full_prompt = f"Jsi Kvádr AI Asistent. Kontext: {kontext}. Dotaz: {prompt}"
+                    response = model.generate_content(full_prompt)
                     st.markdown(response.text)
                     st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-                except: st.error("Chyba spojení.")
+                except:
+                    st.error("Chyba spojení s AI.")
