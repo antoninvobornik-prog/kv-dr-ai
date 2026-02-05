@@ -19,11 +19,10 @@ if "show_weather_details" not in st.session_state:
 
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
-# Inicializace AI modelu (automaticky najde ten funkční)
+# Inicializace AI modelu (automaticky najde ten funkční pod tvým klíčem)
 if "model_name" not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        # Najdeme modely, které skutečně fungují pod tvým klíčem
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         flash_models = [m for m in available_models if "flash" in m.lower()]
         
@@ -33,11 +32,11 @@ if "model_name" not in st.session_state:
             st.session_state.model_name = available_models[0]
         else:
             st.session_state.model_name = "gemini-1.5-flash"
-    except Exception as e:
+    except Exception:
         st.session_state.model_name = "gemini-1.5-flash"
 
 # ==========================================
-# 2. POMOCNÉ FUNKCE
+# 2. POMOCNÉ FUNKCE (POČASÍ A SHEETS)
 # ==========================================
 SOURADNICE = {
     "Nové Město n. M.": (50.344, 16.151),
@@ -56,13 +55,13 @@ def nacti_kompletni_pocasi():
     for mesto, (lat, lon) in SOURADNICE.items():
         try:
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto"
-            res = requests.get(url, timeout=3).json()
+            res = requests.get(url, timeout=5).json()
             data_output[mesto] = {
                 "aktualni_teplota": f"{round(res['current']['temperature_2m'])}°C",
                 "aktualni_ikona": get_wmo_emoji(res['current']['weathercode']).split(" ")[0],
                 "predpoved": [{"den": (datetime.now() + timedelta(days=i)).strftime("%d.%m."), "pocasi": get_wmo_emoji(res['daily']['weathercode'][i]), "teplota": f"{round(res['daily']['temperature_2m_min'][i])}° / {round(res['daily']['temperature_2m_max'][i])}°"} for i in range(7)]
             }
-        except:
+        except Exception:
             data_output[mesto] = {"aktualni_teplota": "--", "aktualni_ikona": "⚠️", "predpoved": []}
     return data_output
 
@@ -71,12 +70,13 @@ def nacti_data_sheets(nazev_listu):
         base_url = st.secrets["GSHEET_URL"]
         sheet_id = base_url.split("/d/")[1].split("/")[0]
         csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
-        return pd.read_csv(csv_url)
-    except: 
+        df = pd.read_csv(csv_url)
+        return df
+    except Exception: 
         return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
-# 3. DESIGN A STYLY
+# 3. DESIGN A STYLY (CSS)
 # ==========================================
 st.markdown("""
 <style>
@@ -87,6 +87,7 @@ st.markdown("""
     .wb-temp { font-size: 18px; font-weight: bold; }
     .city-detail-card { background: rgba(15, 23, 42, 0.8); border-left: 4px solid #3b82f6; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
     .forecast-row { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 5px 0; font-size: 13px; }
+    h1, h2, h3 { color: white !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -110,44 +111,54 @@ with col_nav2:
 
 # --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
-    # --- PŘIDANÉ NADPISY ---
-    st.title("🏙️ Vítejte, Domovská stránka")
-    st.subheader("Váš chytrý rozcestník a asistent")
-    st.write("---") # Oddělovací čára
+    st.markdown('<h1 style="text-align:center;">🏙️ Vítejte</h1>', unsafe_allow_html=True)
+    st.markdown('<h3 style="text-align:center; color:#60a5fa;">Domovská stránka</h3>', unsafe_allow_html=True)
+    st.write("---")
 
+    # Sekce počasí
     weather_data = nacti_kompletni_pocasi()
-    # ... (zbytek kódu pro počasí zůstává stejný) ...
+    html_top = '<div class="weather-grid-top">'
+    for m, d in weather_data.items():
+        html_top += f'<div class="weather-box-small"><div class="wb-city">{m}</div><div class="wb-temp">{d["aktualni_ikona"]} {d["aktualni_teplota"]}</div></div>'
+    st.markdown(html_top + '</div>', unsafe_allow_html=True)
 
-    st.markdown('<h3 style="text-align:center; margin-top:30px;">📢 Aktuální oznámení</h3>', unsafe_allow_html=True)
+    if st.button("📅 Zobrazit detailní předpověď", use_container_width=True):
+        st.session_state.show_weather_details = not st.session_state.show_weather_details
+        st.rerun()
+
+    if st.session_state.show_weather_details:
+        cols = st.columns(2)
+        for i, (mesto, data) in enumerate(weather_data.items()):
+            with cols[i % 2]:
+                rows = "".join([f'<div class="forecast-row"><span>{d["den"]}</span><span>{d["pocasi"]}</span><b>{d["teplota"]}</b></div>' for d in data['predpoved']])
+                st.markdown(f'<div class="city-detail-card"><b style="color:#3b82f6">{mesto}</b>{rows}</div>', unsafe_allow_html=True)
+
+    # Sekce Oznámení
+    st.markdown('<h2 style="text-align:center; margin-top:40px;">📢 Oznámení</h2>', unsafe_allow_html=True)
     df_oznameni = nacti_data_sheets("List 2")
     if not df_oznameni.empty:
         for z in df_oznameni['zprava'].dropna():
             st.info(z)
     else:
-        st.write("Dnes nejsou žádná nová oznámení.")
+        st.write("Dnes nejsou žádná oznámení.")
 
 # --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
-    # --- PŘIDANÉ NADPISY ---
     st.title("💬 Chat s Kvádr AI")
-    st.caption("Ptejte se na cokoliv, co vás zajímá ohledně našich dat a informací.")
+    st.caption("Ptejte se na cokoliv ohledně organizace Kvádr.")
     
     st.sidebar.caption(f"Model: {st.session_state.model_name}")
-    # ... (zbytek kódu pro chat zůstává stejný) ...
-    st.markdown('<h3 style="text-align:center;">Oznámení</h3>', unsafe_allow_html=True)
-    df_oznameni = nacti_data_sheets("List 2")
-    if not df_oznameni.empty:
-        for z in df_oznameni['zprava'].dropna():
-            st.info(z)
+    if st.sidebar.button("🗑️ Vymazat historii"):
+        st.session_state.chat_history = []
+        st.rerun()
 
-    
-    # Zobrazení historie
+    # Zobrazení chatu
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Vstup uživatele
-    if prompt := st.chat_input("Napište zprávu pro Kvádr AI..."):
+    # Vstup pro zprávu
+    if prompt := st.chat_input("Napište zprávu..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -155,20 +166,18 @@ elif st.session_state.page == "AI Chat":
         with st.chat_message("assistant"):
             with st.spinner("Přemýšlím..."):
                 try:
-                    # Načtení kontextu z tabulky
+                    # Načtení dat z Google Sheet pro kontext
                     df_ai = nacti_data_sheets("List 1")
-                    kontext_text = " ".join(df_ai['zprava'].astype(str).tolist())
+                    kontext = " ".join(df_ai['zprava'].astype(str).tolist())
                     
                     model = genai.GenerativeModel(st.session_state.model_name)
-                    plny_dotaz = f"Jsi Kvádr AI. Odpovídej česky na základě tohoto kontextu: {kontext_text}\n\nUživatel: {prompt}"
+                    instrukce = f"Jsi Kvádr AI. Použij tyto info: {kontext}. Odpovídej česky."
                     
-                    response = model.generate_content(plny_dotaz)
+                    response = model.generate_content(f"{instrukce}\n\nUživatel: {prompt}")
                     
                     if response.text:
                         st.markdown(response.text)
                         st.session_state.chat_history.append({"role": "assistant", "content": response.text})
                         st.rerun()
-                    else:
-                        st.error("AI vrátila prázdnou odpověď.")
                 except Exception as e:
-                    st.error(f"Chyba při komunikaci s AI: {e}")
+                    st.error(f"Chyba AI: {e}")
