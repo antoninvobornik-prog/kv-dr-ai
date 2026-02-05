@@ -6,21 +6,33 @@ import requests
 from datetime import datetime, timedelta
 
 # ==========================================
-# 1. KONFIGURACE
+# 1. KONFIGURACE (AUTOMATICKÁ DETEKCE MODELU)
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
 if "model_name" not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        st.session_state.model_name = "models/gemini-1.5-flash"
-    except:
-        st.session_state.model_name = "models/gemini-1.5-flash"
+        
+        # Najdeme všechny modely, které máš dostupné
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Zkusíme najít verzi "flash", která je nejrychlejší
+        flash_models = [m for m in available_models if "flash" in m.lower()]
+        
+        if flash_models:
+            st.session_state.model_name = flash_models[0] # Vybere např. 'models/gemini-1.5-flash'
+        elif available_models:
+            st.session_state.model_name = available_models[0] # Vybere jakýkoliv funkční
+        else:
+            st.session_state.model_name = "gemini-1.5-flash" # Poslední záchrana
+            
+    except Exception as e:
+        st.error(f"Nepodařilo se načíst seznam modelů: {e}")
+        st.session_state.model_name = "gemini-1.5-flash"
 
-if "page" not in st.session_state: st.session_state.page = "Domů"
-if "show_weather_details" not in st.session_state: st.session_state.show_weather_details = False
-if "chat_history" not in st.session_state: st.session_state.chat_history = []
-
+# Pro tvoji kontrolu - vypíše do bočního panelu, co aplikace vybrala
+st.sidebar.caption(f"Aktivní AI model: {st.session_state.model_name}")
 # ==========================================
 # 2. LOGIKA POČASÍ
 # ==========================================
