@@ -6,8 +6,10 @@ import requests
 from datetime import datetime, timedelta
 
 # ==========================================
-# 1. INICIALIZACE STAVU
+# 1. INICIALIZACE A KONFIGURACE
 # ==========================================
+st.set_page_config(page_title="Kvádr AI", layout="wide", page_icon="🏙️")
+
 if "page" not in st.session_state:
     st.session_state.page = "Domů"
 if "chat_history" not in st.session_state:
@@ -15,9 +17,7 @@ if "chat_history" not in st.session_state:
 if "show_weather_details" not in st.session_state:
     st.session_state.show_weather_details = False
 
-st.set_page_config(page_title="Kvádr AI", layout="wide")
-
-# Inicializace AI modelu
+# Nastavení AI Modelu
 if "model_name" not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -67,7 +67,7 @@ def nacti_data_sheets(nazev_listu):
         return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
-# 3. DESIGN
+# 3. CSS STYLY
 # ==========================================
 st.markdown("""
 <style>
@@ -78,30 +78,35 @@ st.markdown("""
     .wb-temp { font-size: 18px; font-weight: bold; }
     .city-detail-card { background: rgba(15, 23, 42, 0.8); border-left: 4px solid #3b82f6; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
     .forecast-row { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 5px 0; font-size: 13px; }
-    h1, h2, h3 { color: white !important; text-align: center; }
+    h1, h2, h3 { color: white !important; text-align: center; font-family: 'Assistant', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
 # 4. NAVIGACE
 # ==========================================
-col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
-with col_nav2:
+col_n1, col_n2, col_n3 = st.columns([1, 2, 1])
+with col_n2:
     if st.session_state.page == "Domů":
         if st.button("💬 Otevřít AI Chat", use_container_width=True, type="primary"):
-            st.session_state.page = "AI Chat"; st.rerun()
+            st.session_state.page = "AI Chat"
+            st.rerun()
     else:
         if st.button("🏠 Zpět Domů", use_container_width=True):
-            st.session_state.page = "Domů"; st.rerun()
+            st.session_state.page = "Domů"
+            st.rerun()
 
 # ==========================================
-# 5. OBSAH
+# 5. OBSAH STRÁNEK
 # ==========================================
+
+# --- DOMOVSKÁ STRÁNKA ---
 if st.session_state.page == "Domů":
     st.markdown('<h1>🏙️ Vítejte</h1>', unsafe_allow_html=True)
     st.markdown('<h3 style="color:#60a5fa;">Domovská stránka</h3>', unsafe_allow_html=True)
     st.write("---")
 
+    # Počasí
     weather_data = nacti_kompletni_pocasi()
     html_top = '<div class="weather-grid-top">'
     for m, d in weather_data.items():
@@ -119,52 +124,63 @@ if st.session_state.page == "Domů":
                 rows = "".join([f'<div class="forecast-row"><span>{d["den"]}</span><span>{d["pocasi"]}</span><b>{d["teplota"]}</b></div>' for d in data['predpoved']])
                 st.markdown(f'<div class="city-detail-card"><b style="color:#3b82f6">{mesto}</b>{rows}</div>', unsafe_allow_html=True)
 
+    # Oznámení
     st.markdown('<h2 style="margin-top:40px;">📢 Oznámení</h2>', unsafe_allow_html=True)
     df_oznameni = nacti_data_sheets("List 2")
     if not df_oznameni.empty:
-        for z in df_oznameni['zprava'].dropna(): st.info(z)
-    else: st.write("Žádná nová oznámení.")
+        for z in df_oznameni['zprava'].dropna():
+            st.info(z)
+    else:
+        st.write("Dnes nejsou žádná nová oznámení.")
 
+# --- AI CHAT STRÁNKA ---
 elif st.session_state.page == "AI Chat":
     st.title("💬 Chat s Kvádr AI")
-    st.caption("Ptejte se na Kvádr, počasí nebo cokoliv jiného.")
+    st.caption("Ptejte se na projekt Kvádr, počasí nebo cokoliv ze světa.")
     
     if st.sidebar.button("🗑️ Vymazat historii"):
-        st.session_state.chat_history = []; st.rerun()
+        st.session_state.chat_history = []
+        st.rerun()
 
     for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]): st.markdown(msg["content"])
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
     if prompt := st.chat_input("Napište zprávu..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
         with st.chat_message("assistant"):
             with st.spinner("Kvádr AI přemýšlí..."):
                 try:
+                    # Příprava dat pro AI (Interní info + Detailní počasí)
                     w_data = nacti_kompletni_pocasi()
-                    pocasi_txt = ", ".join([f"{m}: {d['aktualni_teplota']} ({d['aktualni_ikona']})" for m, d in w_data.items()])
-                    df_ai = nacti_data_sheets("List 1")
-                    kontext = " ".join(df_ai['zprava'].astype(str).tolist())
+                    p_txt = ""
+                    for m, d in w_data.items():
+                        pred = ", ".join([f"{x['den']}: {x['teplota']}" for x in d['predpoved'][:3]])
+                        p_txt += f"{m} (Dnes: {d['aktualni_teplota']}, Předpověď: {pred}). "
                     
-                    # MAGICKÝ PROMPT: Priority a zákaz geometrie
-                    system_prompt = (
-                        f"Jsi Kvádr AI. TVOJE IDENTITY: Jsi asistent pro organizaci KVÁDR. "
-                        f"PŘÍSNÝ ZÁKAZ: Nikdy neříkej, že Kvádr je geometrický tvar, obdélník nebo krabice. "
-                        f"Pokud se tě někdo ptá na 'Kvádr', myslí tím naši organizaci/projekt. "
-                        f"TVOJE ZDROJE (Priority): "
-                        f"1. Naše interní data: {kontext}. "
-                        f"2. Aktuální počasí: {pocasi_txt}. "
-                        f"3. Pokud odpověď není v datech, hledej ve svých všeobecných znalostech a na internetu. "
-                        f"Odpovídej česky a přátelsky."
+                    df_ai = nacti_data_sheets("List 1")
+                    kontext_sheets = " ".join(df_ai['zprava'].astype(str).tolist())
+                    
+                    # Systémové instrukce
+                    sys_prompt = (
+                        f"Jsi Kvádr AI, asistent organizace Kvádr. "
+                        f"DŮLEŽITÉ: Kvádr je náš projekt, NIKDY o něm nemluv jako o geometrickém tvaru nebo obdélníku! "
+                        f"Zdroje dat: {kontext_sheets}. "
+                        f"Data o počasí: {p_txt}. "
+                        f"Pravidla: 1. Pokud znáš odpověď z dat, použij je. "
+                        f"2. Pokud se uživatel ptá na předpověď nebo věci mimo data, použij své znalosti a internet. "
+                        f"3. Buď stručný, milý a odpovídej česky."
                     )
                     
                     model = genai.GenerativeModel(st.session_state.model_name)
-                    response = model.generate_content(f"{system_prompt}\n\nUživatel: {prompt}")
+                    res = model.generate_content(f"{sys_prompt}\n\nUživatel: {prompt}")
                     
-                    if response.text:
-                        st.markdown(response.text)
-                        st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                    if res.text:
+                        st.markdown(res.text)
+                        st.session_state.chat_history.append({"role": "assistant", "content": res.text})
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Omlouvám se, došlo k chybě: {e}")
+                    st.error(f"Chyba: {e}")
