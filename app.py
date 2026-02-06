@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import time
 
 # =================================================================
-# 1. KONFIGURACE A STAV (Verze 2.0)
+# 1. KONFIGURACE A CHYTRÝ VÝBĚR MODELU
 # =================================================================
 st.set_page_config(
     page_title="Kvádr Portál 2.0", 
@@ -20,26 +20,38 @@ st.set_page_config(
 # Skrytí postranního panelu
 st.markdown("<style>section[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
 
+# Inicializace stavů aplikace
 if "page" not in st.session_state: st.session_state.page = "Domů"
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_index" not in st.session_state: st.session_state.news_index = 0
-if "cache_zpravy" not in st.session_state: st.session_state.cache_zpravy = []
-if "posledni_update_zprav" not in st.session_state: st.session_state.posledni_update_zprav = 0
+if "active_model" not in st.session_state: st.session_state.active_model = None
 
-# OPRAVA: Konfigurace Google AI s přesným názvem modelu
-try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    # Používáme přesný identifikátor modelu, aby nevznikala chyba NotFound
-    MODEL_ID = "models/gemini-1.5-flash"
-except Exception as e:
-    st.error(f"AI Konfigurace selhala: {e}")
+def najdi_funkcni_model():
+    """Najde v seznamu Googlu model, který skutečně existuje a funguje."""
+    if st.session_state.active_model:
+        return st.session_state.active_model
+    try:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+        # Získáme seznam modelů, které podporují generování obsahu
+        dostupne = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Seznam prioritních názvů (Google je občas mění)
+        priority = ["models/gemini-1.5-flash", "models/gemini-1.5-flash-latest", "models/gemini-pro"]
+        for p in priority:
+            if p in dostupne:
+                st.session_state.active_model = p
+                return p
+        
+        return dostupne[0] if dostupne else "gemini-1.5-flash"
+    except Exception as e:
+        return f"Chyba: {e}"
 
 # =================================================================
-# 2. LOGICKÉ FUNKCE
+# 2. POMOCNÉ FUNKCE (POČASÍ, ZPRÁVY, SHEETS)
 # =================================================================
 
 def get_weather_desc(code):
-    """Převodník kódů počasí - opraveno, aby nehlásil Neznámé."""
+    """Kompletní převodník kódů počasí na text a emoji."""
     mapping = {
         0: "Jasno ☀️", 1: "Převážně jasno 🌤️", 2: "Polojasno ⛅", 3: "Zataženo ☁️",
         45: "Mlha 🌫️", 48: "Námraza 🌫️", 51: "Mírné mrholení 🌦️", 53: "Mrholení 🌦️", 
@@ -47,7 +59,7 @@ def get_weather_desc(code):
         66: "Mrznoucí déšť 🧊", 71: "Sněžení ❄️", 80: "Slabé přeháňky 🌦️", 
         81: "Přeháňky 🌧️", 82: "Silné přeháňky 🌊", 95: "Bouřka ⚡"
     }
-    return mapping.get(code, f"Lokalizuji ({code})")
+    return mapping.get(code, f"Neznámé ({code})")
 
 @st.cache_data(ttl=600)
 def nacti_kompletni_pocasi():
@@ -66,10 +78,10 @@ def nacti_kompletni_pocasi():
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto"
             r = requests.get(url, timeout=5).json()
             
-            predpoved = []
+            tyden = []
             for i in range(7):
                 datum_obj = datetime.now() + timedelta(days=i)
-                predpoved.append({
+                tyden.append({
                     "Den": dny_cz[datum_obj.weekday()],
                     "Stav": get_weather_desc(r['daily']['weathercode'][i]),
                     "Max": f"{round(r['daily']['temperature_2m_max'][i])}°C",
@@ -80,38 +92,29 @@ def nacti_kompletni_pocasi():
             vysledek[m] = {
                 "aktualni": f"{round(r['current']['temperature_2m'])}°C",
                 "popis": get_weather_desc(r['current']['weathercode']),
-                "tyden": predpoved
+                "tyden": tyden
             }
         except:
-            vysledek[m] = {"aktualni": "??", "popis": "Chyba", "tyden": []}
+            vysledek[m] = {"aktualni": "??", "popis": "Chyba spojení", "tyden": []}
     return vysledek
 
-def nacti_zpravy_agregovane():
-    ted = time.time()
-    if st.session_state.cache_zpravy and (ted - st.session_state.posledni_update_zprav < 600):
-        return st.session_state.cache_zpravy
-
+@st.cache_data(ttl=600)
+def nacti_zpravy_rss():
+    vystup = []
     zdroje = [
         ("ČT24", "https://ct24.ceskatelevize.cz/rss/hlavni-zpravy"),
-        ("Seznam", "https://www.seznamzpravy.cz/rss")
+        ("Seznam Zprávy", "https://www.seznamzpravy.cz/rss")
     ]
-    vystup = []
     for label, url in zdroje:
         try:
-            r = requests.get(url, timeout=4)
+            r = requests.get(url, timeout=5)
             root = ET.fromstring(r.content)
             for item in root.findall('.//item')[:10]:
-                title = item.find('title').text
-                vystup.append(f"{label}: {title}")
+                vystup.append(f"{label}: {item.find('title').text}")
         except: continue
-            
-    if vystup:
-        st.session_state.cache_zpravy = vystup
-        st.session_state.posledni_update_zprav = ted
-        return vystup
-    return ["Aktualizuji zpravodajství..."]
+    return vystup if vystup else ["Zprávy se nepodařilo načíst..."]
 
-def nacti_data_sheets(list_name):
+def nacti_data_z_tabulky(list_name):
     try:
         url = st.secrets["GSHEET_URL"]
         sheet_id = url.split("/d/")[1].split("/")[0]
@@ -154,12 +157,12 @@ with nav_col2:
             st.session_state.page = "Domů"; st.rerun()
 
 # =================================================================
-# 5. DOMOVSKÁ OBRAZOVKA (Verze 2.0)
+# 5. DOMOVSKÁ OBRAZOVKA (PLNÁ VERZE)
 # =================================================================
 if st.session_state.page == "Domů":
     st.markdown("<h1 style='text-align:center;'>🏙️ Kvádr Portál 2.0</h1>", unsafe_allow_html=True)
     
-    # Počasí pro 5 měst
+    # Počasí
     w_data = nacti_kompletni_pocasi()
     w_cols = st.columns(len(w_data))
     for i, (mesto, d) in enumerate(w_data.items()):
@@ -172,20 +175,24 @@ if st.session_state.page == "Domů":
         """, unsafe_allow_html=True)
     
     st.write("##")
-    with st.expander("📅 Týdenní předpověď (včetně Rychnova)"):
+    with st.expander("📅 Podrobná týdenní předpověď (včetně Rychnova)"):
         tabs = st.tabs(list(w_data.keys()))
         for i, (mesto, d) in enumerate(w_data.items()):
             with tabs[i]:
-                if d["tyden"]: st.table(pd.DataFrame(d["tyden"]))
+                if d["tyden"]:
+                    st.table(pd.DataFrame(d["tyden"]))
+                else:
+                    st.warning("Data pro tento region nejsou momentálně dostupná.")
 
-    # Oznámení
-    df_oznameni = nacti_data_sheets("List 2")
+    # Oznámení z Listu 2
+    df_oznameni = nacti_data_z_tabulky("List 2")
     if not df_oznameni.empty:
+        st.write("### 🔔 Aktuální oznámení")
         for zprava in df_oznameni['zprava'].dropna():
             st.info(zprava)
 
-    # Spodní lišta se zprávami
-    seznam_zprav = nacti_zpravy_agregovane()
+    # Běžící lišta zpráv
+    seznam_zprav = nacti_zpravy_rss()
     idx = st.session_state.news_index % len(seznam_zprav)
     st.markdown(f'<div class="news-ticker">🗞️ {seznam_zprav[idx]}</div>', unsafe_allow_html=True)
 
@@ -194,10 +201,12 @@ if st.session_state.page == "Domů":
     st.rerun()
 
 # =================================================================
-# 6. AI CHAT (Opravené volání modelu)
+# 6. AI CHAT (DYNAMICKÝ MODEL)
 # =================================================================
 elif st.session_state.page == "AI Chat":
+    m_name = najdi_funkcni_model()
     st.markdown("<h1 style='text-align:center;'>💬 Kvádr AI Asistent 2.0</h1>", unsafe_allow_html=True)
+    st.caption(f"Status: Online | Model: {m_name}")
     
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
@@ -209,20 +218,22 @@ elif st.session_state.page == "AI Chat":
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Kvádr přemýšlí..."):
+            with st.spinner("Kvádr analyzuje data..."):
                 try:
-                    df_context = nacti_data_sheets("List 1")
+                    df_context = nacti_data_z_tabulky("List 1")
                     kontext_text = " ".join(df_context['zprava'].astype(str).tolist())
                     
-                    # OPRAVENÉ VOLÁNÍ: model_name používá MODEL_ID definovaný nahoře
                     model = genai.GenerativeModel(
-                        model_name=MODEL_ID,
-                        system_instruction=f"Jsi asistent projektu Kvádr 2.0. Zde jsou tvá data: {kontext_text}."
+                        model_name=m_name,
+                        system_instruction=f"Jsi asistent projektu Kvádr 2.0. Zde jsou tvá data: {kontext_text}. Odpovídej věcně a přátelsky."
                     )
                     
                     history_gemini = []
                     for h in st.session_state.chat_history[:-1]:
-                        history_gemini.append({"role": "user" if h["role"]=="user" else "model", "parts": [h["content"]]})
+                        history_gemini.append({
+                            "role": "user" if h["role"]=="user" else "model", 
+                            "parts": [h["content"]]
+                        })
                     
                     chat = model.start_chat(history=history_gemini)
                     response = chat.send_message(prompt)
@@ -231,5 +242,4 @@ elif st.session_state.page == "AI Chat":
                     st.session_state.chat_history.append({"role": "assistant", "content": response.text})
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Chyba komunikace s Google AI: {e}")
-                    st.info("Tip: Zkontroluj, zda máš v Secrets správně nastavený GOOGLE_API_KEY.")
+                    st.error(f"Omlouvám se, došlo k chybě: {e}")
