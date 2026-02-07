@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import time
 
 # ==========================================
-# 1. KONFIGURACE A OPRAVA AI (ERROR 404 FIX)
+# 1. KONFIGURACE AI (OPRAVA NENALEZENÉHO MODELU)
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
@@ -20,29 +20,33 @@ if "news_index" not in st.session_state: st.session_state.news_index = 0
 @st.cache_resource
 def inicializuj_ai():
     try:
-        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        # Najdeme model a vezmeme jeho CELÉ JMÉNO (předejde chybě 404)
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'gemini-1.5-flash' in m.name:
-                    return genai.GenerativeModel(model_name=m.name) # Použije přesné jméno z výpisu
-        # Pokud nenašel flash, zkusí pro
-        for m in genai.list_models():
-            if 'gemini-1.5-pro' in m.name:
-                return genai.GenerativeModel(model_name=m.name)
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        genai.configure(api_key=api_key)
+        
+        # Zkusíme najít model v seznamu
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    if 'gemini-1.5-flash' in m.name:
+                        return genai.GenerativeModel(m.name)
+        except:
+            pass # Pokud listování selže (někdy u nových klíčů), zkusíme přímý název
+            
+        return genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
-        st.error(f"Kritická chyba AI: {e}")
-    return None
+        st.error(f"Kritická chyba API: {e}")
+        return None
 
 ai_model = inicializuj_ai()
 
 # ==========================================
-# 2. POMOCNÉ FUNKCE (Původní počasí a RSS)
+# 2. AKTUALITY (RSS - Zaručeně čerstvé)
 # ==========================================
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300) # Data se obnovují každých 5 minut
 def nacti_aktuality():
     zpravy = []
+    # ČT24 a Novinky jsou nejčerstvější zdroje v ČR
     zdroje = ["https://ct24.ceskatelevize.cz/rss/hlavni-zpravy", "https://www.novinky.cz/rss"]
     for url in zdroje:
         try:
@@ -52,7 +56,13 @@ def nacti_aktuality():
                 title = item.find('title').text
                 if title: zpravy.append(title.strip())
         except: continue
-    return zpravy if zpravy else ["Kvádr AI: Systém připraven.", "Načítám čerstvé zprávy..."]
+    
+    aktualni_cas = datetime.now().strftime("%H:%M")
+    return zpravy if zpravy else [f"Systém Kvádr aktualizován v {aktualni_cas}"], aktualni_cas
+
+# ==========================================
+# 3. POČASÍ (PŮVODNÍ DETAILNÍ DESIGN)
+# ==========================================
 
 def get_wmo_emoji(code):
     mapping = {0: "☀️ Jasno", 1: "⛅ Polojasno", 2: "⛅ Polojasno", 3: "☁️ Zataženo", 45: "🌫️ Mlha", 51: "🌧️ Mrholení", 61: "☔ Déšť", 71: "❄️ Sníh", 95: "⛈️ Bouřka"}
@@ -83,7 +93,7 @@ def nacti_data_sheets(nazev_listu):
     except: return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
-# 3. STYLY
+# 4. STYLY
 # ==========================================
 st.markdown("""
 <style>
@@ -100,11 +110,12 @@ st.markdown("""
         text-align: center; backdrop-filter: blur(10px);
     }
     .news-text { color: #60a5fa; font-weight: bold; font-size: 14px; }
+    .news-time { color: #3b82f6; font-size: 10px; display: block; opacity: 0.7; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. NAVIGACE
+# 5. STRÁNKY
 # ==========================================
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
@@ -115,9 +126,6 @@ with c2:
         if st.button("🏠 ZPĚT NA PORTÁL", use_container_width=True):
             st.session_state.page = "Domů"; st.rerun()
 
-# ==========================================
-# 5. STRÁNKA: DOMŮ
-# ==========================================
 if st.session_state.page == "Domů":
     st.markdown('<h1 style="text-align:center;">🏙️ KVÁDR PORTÁL</h1>', unsafe_allow_html=True)
     
@@ -143,36 +151,38 @@ if st.session_state.page == "Domů":
     df = nacti_data_sheets("List 2")
     for msg in df['zprava'].dropna(): st.info(msg)
 
-    seznam_zprav = nacti_aktuality()
+    # Zpravodajský ostrůvek (Aktuální zprávy)
+    seznam_zprav, cas_stazeni = nacti_aktuality()
     idx = st.session_state.news_index % len(seznam_zprav)
-    st.markdown(f'<div class="news-island"><div class="news-text">🗞️ {seznam_zprav[idx]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'''
+        <div class="news-island">
+            <span class="news-time">AKTUALIZOVÁNO DNES V {cas_stazeni}</span>
+            <div class="news-text">🗞️ {seznam_zprav[idx]}</div>
+        </div>
+    ''', unsafe_allow_html=True)
 
     time.sleep(8)
     st.session_state.news_index += 1
     st.rerun()
 
-# ==========================================
-# 6. STRÁNKA: AI CHAT
-# ==========================================
 elif st.session_state.page == "AI Chat":
     st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
     
     if ai_model is None:
-        st.error("AI model nebyl nalezen. Zkontroluj API klíč v Secrets.")
+        st.error("AI model nebyl nalezen. Zkontroluj API klíč v Secrets (GOOGLE_API_KEY).")
+    else:
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]): st.markdown(msg["content"])
-
-    if pr := st.chat_input("Zeptej se na projekt Kvádr..."):
-        st.session_state.chat_history.append({"role": "user", "content": pr})
-        with st.chat_message("user"): st.markdown(pr)
-        with st.chat_message("assistant"):
-            try:
-                df_ai = nacti_data_sheets("List 1")
-                ctx = " ".join(df_ai['zprava'].astype(str).tolist())
-                # Oprava volání - model už je v sessionu správně nastaven
-                response = ai_model.generate_content(f"Jsi asistent projektu Kvádr. Info: {ctx}\nUživatel: {pr}")
-                st.markdown(response.text)
-                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            except Exception as e:
-                st.error(f"AI se nepodařilo odpovědět: {e}")
+        if pr := st.chat_input("Zeptej se na cokoliv..."):
+            st.session_state.chat_history.append({"role": "user", "content": pr})
+            with st.chat_message("user"): st.markdown(pr)
+            with st.chat_message("assistant"):
+                try:
+                    df_ai = nacti_data_sheets("List 1")
+                    ctx = " ".join(df_ai['zprava'].astype(str).tolist())
+                    response = ai_model.generate_content(f"Jsi asistent projektu Kvádr. Info: {ctx}\nUživatel: {pr}")
+                    st.markdown(response.text)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error(f"Chyba: {e}")
