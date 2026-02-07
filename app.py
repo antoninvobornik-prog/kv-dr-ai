@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import time
 
 # ==========================================
-# 1. KONFIGURACE A DYNAMICKÝ VÝBĚR MODELU
+# 1. KONFIGURACE A OPRAVA AI (ERROR 404 FIX)
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
@@ -21,19 +21,23 @@ if "news_index" not in st.session_state: st.session_state.news_index = 0
 def inicializuj_ai():
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+        # Najdeme model a vezmeme jeho CELÉ JMÉNO (předejde chybě 404)
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
-                if 'gemini-1.5-flash' in m.name or 'gemini-1.5-pro' in m.name:
-                    return genai.GenerativeModel(m.name)
-        return genai.GenerativeModel('gemini-1.5-flash')
+                if 'gemini-1.5-flash' in m.name:
+                    return genai.GenerativeModel(model_name=m.name) # Použije přesné jméno z výpisu
+        # Pokud nenašel flash, zkusí pro
+        for m in genai.list_models():
+            if 'gemini-1.5-pro' in m.name:
+                return genai.GenerativeModel(model_name=m.name)
     except Exception as e:
-        st.error(f"Nelze inicializovat AI: {e}")
-        return None
+        st.error(f"Kritická chyba AI: {e}")
+    return None
 
 ai_model = inicializuj_ai()
 
 # ==========================================
-# 2. POMOCNÉ FUNKCE
+# 2. POMOCNÉ FUNKCE (Původní počasí a RSS)
 # ==========================================
 
 @st.cache_data(ttl=600)
@@ -89,7 +93,7 @@ st.markdown("""
     
     .news-island {
         position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-        background: rgba(15, 23, 42, 0.9); border: 1px solid #3b82f6;
+        background: rgba(15, 23, 42, 0.95); border: 1px solid #3b82f6;
         padding: 12px 25px; border-radius: 50px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         z-index: 1000; width: auto; max-width: 85%;
@@ -117,7 +121,6 @@ with c2:
 if st.session_state.page == "Domů":
     st.markdown('<h1 style="text-align:center;">🏙️ KVÁDR PORTÁL</h1>', unsafe_allow_html=True)
     
-    # Horní lišta počasí
     weather_data = nacti_kompletni_pocasi()
     h_html = '<div class="weather-grid-top">'
     for m, d in weather_data.items():
@@ -125,12 +128,10 @@ if st.session_state.page == "Domů":
     h_html += '</div>'
     st.markdown(h_html, unsafe_allow_html=True)
 
-    # Tlačítko pro detail počasí
     if st.button("📅 " + ("Zavřít detail" if st.session_state.show_weather_details else "Zobrazit předpověď"), use_container_width=True):
         st.session_state.show_weather_details = not st.session_state.show_weather_details
         st.rerun()
 
-    # Detailní předpověď (To co jsi chtěl vrátit)
     if st.session_state.show_weather_details:
         cols = st.columns(2)
         for i, (mesto, data) in enumerate(weather_data.items()):
@@ -142,12 +143,10 @@ if st.session_state.page == "Domů":
     df = nacti_data_sheets("List 2")
     for msg in df['zprava'].dropna(): st.info(msg)
 
-    # Zpravodajský ostrůvek
     seznam_zprav = nacti_aktuality()
     idx = st.session_state.news_index % len(seznam_zprav)
     st.markdown(f'<div class="news-island"><div class="news-text">🗞️ {seznam_zprav[idx]}</div></div>', unsafe_allow_html=True)
 
-    # Refresh po 8 sekundách
     time.sleep(8)
     st.session_state.news_index += 1
     st.rerun()
@@ -159,7 +158,7 @@ elif st.session_state.page == "AI Chat":
     st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
     
     if ai_model is None:
-        st.error("Chyba: AI model nebyl nalezen. Zkontroluj API klíč.")
+        st.error("AI model nebyl nalezen. Zkontroluj API klíč v Secrets.")
 
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
@@ -171,6 +170,7 @@ elif st.session_state.page == "AI Chat":
             try:
                 df_ai = nacti_data_sheets("List 1")
                 ctx = " ".join(df_ai['zprava'].astype(str).tolist())
+                # Oprava volání - model už je v sessionu správně nastaven
                 response = ai_model.generate_content(f"Jsi asistent projektu Kvádr. Info: {ctx}\nUživatel: {pr}")
                 st.markdown(response.text)
                 st.session_state.chat_history.append({"role": "assistant", "content": response.text})
