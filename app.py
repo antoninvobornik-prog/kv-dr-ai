@@ -25,7 +25,6 @@ st.markdown("""
     
     .portal-header { text-align: center; padding: 15px; background: linear-gradient(90deg, #1e3a8a, #3b82f6); border-bottom: 4px solid #60a5fa; border-radius: 0 0 20px 20px; margin-bottom: 10px; }
     
-    /* MEGA TLAČÍTKO AI */
     .stButton>button {
         background: linear-gradient(45deg, #ef4444, #dc2626) !important;
         color: white !important;
@@ -87,7 +86,6 @@ if st.session_state.page == "Domů":
     st.write("### 🌍 AKTUÁLNÍ POČASÍ A PŘEDPOVĚĎ")
     mesta = {"Nové Město": (50.34, 16.15), "Rychnov": (50.16, 16.27), "Bělá": (50.76, 15.05), "Praha": (50.07, 14.43)}
     
-    # Karty
     cols = st.columns(4)
     weather_data = {}
     for i, (name, coords) in enumerate(mesta.items()):
@@ -97,12 +95,12 @@ if st.session_state.page == "Domů":
             t = int(round(d['current']['temperature_2m']))
             s = W_DESC.get(d['current']['weathercode'], "Oblačno")
             with cols[i]:
-                st.markdown(f'<div class="weather-card"><div class="city-name">{name}</div><div class="temp-val">{t}°C</div><div style="color:#94a3b8;">{s}</div></div>', unsafe_allow_True=True)
+                # TADY BYLA TA CHYBA - OPRAVENO:
+                st.markdown(f'<div class="weather-card"><div class="city-name">{name}</div><div class="temp-val">{t}°C</div><div style="color:#94a3b8;">{s}</div></div>', unsafe_allow_html=True)
 
-    # Týdenní tabulka (TO CO CHYBĚLO)
     with st.expander("📅 ZOBRAZIT TÝDENNÍ PŘEDPOVĚĎ (DETAIL)"):
         volba = st.selectbox("Vyber město:", list(mesta.keys()))
-        detaily = weather_data[volba]
+        detaily = weather_data.get(volba)
         if detaily:
             df = pd.DataFrame({
                 "Den": [DNY_CZ.get(datetime.strptime(t, "%Y-%m-%d").strftime("%A"), t) for t in detaily['daily']['time']],
