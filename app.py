@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import time
 
 # ==========================================
-# 1. KONFIGURACE A OPRAVA AI (ERROR 404 FIX)
+# 1. AUTOMATICKÁ DETEKCE MODELU (FIX 404)
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
@@ -23,29 +23,30 @@ def inicializuj_ai():
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
         
-        # Seznam variant názvů, které Google bere (řeší chybu 404)
-        modely_ke_zkousce = ['models/gemini-1.5-flash', 'gemini-1.5-flash', 'models/gemini-pro']
+        # NAJDEME MODEL AUTOMATICKY - vezmeme přesné jméno z tvého API
+        dostupne_modely = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # Nejdřív zkusíme automatický seznam
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    if '1.5-flash' in m.name:
-                        return genai.GenerativeModel(m.name)
-        except:
-            pass
-            
-        # Pokud listování selže, zkusíme natvrdo varianty
-        for m_name in modely_ke_zkousce:
-            try:
-                m = genai.GenerativeModel(m_name)
-                # Testovací volání, jestli model existuje
-                return m
-            except:
-                continue
+        # Priorita: 1. Flash 1.5, 2. Flash, 3. Pro, 4. Cokoliv prvního
+        vybrany_model = None
+        for name in dostupne_modely:
+            if 'gemini-1.5-flash' in name:
+                vybrany_model = name
+                break
+        
+        if not vybrany_model:
+            for name in dostupne_modely:
+                if 'flash' in name:
+                    vybrany_model = name
+                    break
+        
+        if not vybrany_model and dostupne_modely:
+            vybrany_model = dostupne_modely[0]
+
+        if vybrany_model:
+            return genai.GenerativeModel(model_name=vybrany_model)
+        return None
     except Exception as e:
         return None
-    return None
 
 ai_model = inicializuj_ai()
 
@@ -66,7 +67,7 @@ def nacti_aktuality():
                 if title: zpravy.append(title.strip())
         except: continue
     aktualni_cas = datetime.now().strftime("%H:%M")
-    return (zpravy if zpravy else [f"Systém Kvádr běží v pořádku."]), aktualni_cas
+    return (zpravy if zpravy else ["Systém aktualizován."]), aktualni_cas
 
 def get_wmo_emoji(code):
     mapping = {0: "☀️ Jasno", 1: "⛅ Polojasno", 2: "⛅ Polojasno", 3: "☁️ Zataženo", 45: "🌫️ Mlha", 51: "🌧️ Mrholení", 61: "☔ Déšť", 71: "❄️ Sníh", 95: "⛈️ Bouřka"}
@@ -157,7 +158,6 @@ if st.session_state.page == "Domů":
     df = nacti_data_sheets("List 2")
     for msg in df['zprava'].dropna(): st.info(msg)
 
-    # Aktuality
     seznam_zprav, cas_stazeni = nacti_aktuality()
     idx = st.session_state.news_index % len(seznam_zprav)
     st.markdown(f'<div class="news-island"><span class="news-time">AKTUALIZOVÁNO {cas_stazeni}</span><div class="news-text">🗞️ {seznam_zprav[idx]}</div></div>', unsafe_allow_html=True)
@@ -173,12 +173,12 @@ elif st.session_state.page == "AI Chat":
     st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
     
     if ai_model is None:
-        st.error("AI model nebyl nalezen. Zkontroluj svůj API klíč.")
+        st.error("Nepodařilo se připojit k AI. Zkontroluj API klíč v Secrets.")
     else:
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-        # Chat_input je POUZE v této větvi elif
+        # Chatovací řádek POUZE ZDE
         pr = st.chat_input("Napiš zprávu...")
         if pr:
             st.session_state.chat_history.append({"role": "user", "content": pr})
@@ -191,4 +191,4 @@ elif st.session_state.page == "AI Chat":
                     st.markdown(response.text)
                     st.session_state.chat_history.append({"role": "assistant", "content": response.text})
                 except Exception as e:
-                    st.error(f"Chyba AI: {e}")
+                    st.error(f"Chyba: {e}")
