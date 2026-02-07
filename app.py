@@ -5,10 +5,58 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# --- KONFIGURACE A DESIGN ---
-st.set_page_config(page_title="Kvádr Portál 6.0", layout="wide", initial_sidebar_state="collapsed")
+# --- KONFIGURACE ---
+st.set_page_config(page_title="Kvádr Portál 7.0", layout="wide", initial_sidebar_state="collapsed")
 
-# Definice měst pro celou aplikaci
+# --- KOMPLETNÍ STYLOVÁNÍ (CSS) ---
+st.markdown("""
+<style>
+    /* Základní nastavení */
+    section[data-testid="stSidebar"] {display: none;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stApp { background-color: #0d1117; color: #e6edf3; }
+    
+    /* Odstranění mezer */
+    .block-container { padding-top: 1rem; padding-bottom: 6rem; max-width: 1000px; }
+
+    /* Hlavní červené tlačítko */
+    .stButton>button {
+        background: linear-gradient(90deg, #d73a49 0%, #cb2431 100%);
+        color: white; border-radius: 10px; border: none;
+        padding: 12px; font-weight: 600; width: 100%;
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    /* Styl expanderu */
+    .streamlit-expanderHeader {
+        background-color: #161b22 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 10px !important;
+        color: #58a6ff !important;
+    }
+
+    /* Design chatu */
+    [data-testid="stChatMessage"] {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 15px;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    
+    /* Spodní lišta se zprávami */
+    .news-footer {
+        position: fixed; bottom: 55px; left: 0; right: 0;
+        background: #090c10; color: #58a6ff;
+        padding: 10px; border-top: 1px solid #30363d;
+        text-align: center; font-size: 13px; z-index: 999;
+        font-weight: 500;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- DATA A MĚSTA ---
 MESTA = {
     "Nové Město": (50.34, 16.15),
     "Rychnov": (50.16, 16.27),
@@ -18,130 +66,82 @@ MESTA = {
     "Pardubice": (50.03, 15.77)
 }
 
-st.markdown("""
-<style>
-    section[data-testid="stSidebar"] {display: none;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stApp { background: #070b14; color: white; }
-    
-    /* Design tlačítek */
-    .stButton>button {
-        background: linear-gradient(90deg, #ff4b4b, #ff7575);
-        color: white; border-radius: 12px; border: none;
-        padding: 15px; font-weight: bold; width: 100%;
-        box-shadow: 0 4px 15px rgba(255, 75, 75, 0.3);
-    }
-
-    /* Design pro chatové zprávy */
-    .stChatMessage {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border-radius: 15px !important;
-        margin-bottom: 10px !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    }
-    
-    /* Úprava vstupu chatu */
-    .stChatInput {
-        background-color: #111827 !important;
-        border-radius: 15px !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- LOGIKA POČASÍ ---
-def get_weather_info(code):
+def get_weather_icon(code):
     icons = {0:"☀️", 1:"🌤️", 2:"⛅", 3:"☁️", 45:"🌫️", 51:"🌦️", 61:"🌧️", 71:"❄️", 80:"🌧️", 95:"⚡"}
-    descs = {0:"Jasno", 1:"Skoro jasno", 2:"Polojasno", 3:"Zataženo", 45:"Mlha", 51:"Mrholení", 61:"Déšť", 71:"Sněžení", 80:"Přeháňky", 95:"Bouřka"}
-    return icons.get(code, "🌡️"), descs.get(code, "Neznámé")
-
-@st.cache_data(ttl=600)
-def fetch_weather_cards():
-    cards_html = ""
-    for m, (lat, lon) in list(MESTA.items())[:5]: # Jen prvních 5 pro karty
-        try:
-            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&timezone=auto", timeout=5).json()
-            curr = r['current']
-            icon, _ = get_weather_info(curr['weathercode'])
-            cards_html += f"""
-            <div style="flex: 0 0 auto; width: 100px; background: rgba(255,255,255,0.07); border-radius: 12px; padding: 10px; text-align: center; margin-right: 10px; border: 1px solid rgba(255,255,255,0.1);">
-                <div style="font-size: 9px; color: #4dabff; font-weight: bold; margin-bottom: 5px;">{m.upper()}</div>
-                <div style="font-size: 24px; font-weight: bold;">{round(curr['temperature_2m'])}°</div>
-                <div style="font-size: 15px; margin-top: 3px;">{icon}</div>
-            </div>
-            """
-        except: pass
-    return f'<div style="display: flex; overflow-x: auto; padding: 10px 0;">{cards_html}</div>'
+    return icons.get(code, "🌡️")
 
 # --- HLAVNÍ STRÁNKA ---
 if "page" not in st.session_state: st.session_state.page = "Domů"
 
 if st.session_state.page == "Domů":
-    if st.button("💬 OTEVŘÍT AI ASISTENTA"):
+    # Hlavní akce
+    if st.button("💬 OTEVŘÍT ASISTENTA"):
         st.session_state.page = "AI Chat"
         st.rerun()
 
-    components.html(fetch_weather_cards(), height=115)
-
-    # --- DETAILNÍ PŘEDPOVĚĎ S VÝBĚREM MĚSTA ---
-    with st.expander("📅 Podrobná předpověď a radar"):
-        vybrane_mesto = st.selectbox("Vyberte město pro detaily:", list(MESTA.keys()))
-        lat, lon = MESTA[vybrane_mesto]
-        
+    # Weather Cards (Horizontální)
+    cards_html = ""
+    for m, (lat, lon) in list(MESTA.items())[:4]: # Zobrazení top 4 měst
         try:
-            res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto").json()
-            daily = res['daily']
-            df = pd.DataFrame({
-                "Datum": [datetime.strptime(d, "%Y-%m-%d").strftime("%d.%m.") for d in daily['time']],
-                "Den (°C)": daily['temperature_2m_max'],
-                "Noc (°C)": daily['temperature_2m_min'],
-                "Stav": [get_weather_info(c)[1] for c in daily['weathercode']]
-            })
-            st.table(df)
-        except:
-            st.error("Chyba při načítání dat.")
-            
-        st.link_button(f"🌐 Otevřít radar pro {vybrane_mesto}", f"https://www.windy.com/{lat}/{lon}")
-
-    st.markdown("---")
+            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&timezone=auto").json()
+            temp = round(r['current']['temperature_2m'])
+            icon = get_weather_icon(r['current']['weathercode'])
+            cards_html += f"""
+            <div style="flex: 1; min-width: 80px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 10px; text-align: center; margin: 5px;">
+                <div style="font-size: 10px; color: #8b949e;">{m.split()[0]}</div>
+                <div style="font-size: 20px; font-weight: bold; margin: 4px 0;">{temp}°</div>
+                <div>{icon}</div>
+            </div>"""
+        except: pass
     
+    components.html(f'<div style="display: flex; justify-content: space-between; font-family: sans-serif;">{cards_html}</div>', height=100)
+
+    # Detaily počasí
+    with st.expander("📅 PODROBNÁ PŘEDPOVĚĎ"):
+        vyber = st.selectbox("Vyberte město:", list(MESTA.keys()))
+        lat, lon = MESTA[vyber]
+        try:
+            res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min&timezone=auto").json()
+            df = pd.DataFrame({
+                "Datum": [datetime.strptime(d, "%Y-%m-%d").strftime("%d.%m.") for d in res['daily']['time']],
+                "Den": res['daily']['temperature_2m_max'],
+                "Noc": res['daily']['temperature_2m_min']
+            })
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.link_button(f"Satelitní radar ({vyber})", f"https://www.windy.com/{lat}/{lon}")
+        except: st.error("Chyba dat.")
+
+    st.write("")
     # Oznámení
     try:
         sheet_url = f"https://docs.google.com/spreadsheets/d/{st.secrets['GSHEET_URL'].split('/d/')[1].split('/')[0]}/gviz/tq?tqx=out:csv&sheet=List%202"
         news_data = pd.read_csv(sheet_url)
         for val in news_data['zprava'].dropna():
-            st.warning(f"🔔 {val}")
+            st.info(f"💡 {val}")
     except: pass
 
-    # NEWS TICKER (55px odspodu)
+    # Ticker dole
     try:
         rss = ET.fromstring(requests.get("https://ct24.ceskatelevize.cz/rss/hlavni-zpravy", timeout=5).content)
         msg = rss.find('.//item/title').text
-        st.markdown(f"""
-            <div style="position: fixed; bottom: 55px; left: 10px; right: 10px; 
-                        background: #002d6e; color: white; padding: 12px; 
-                        border-radius: 15px; border: 1px solid #3b82f6; 
-                        z-index: 999; text-align: center; font-size: 14px; font-family: sans-serif;">
-                🗞️ {msg}
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="news-footer">🗞️ AKTUÁLNĚ: {msg}</div>', unsafe_allow_html=True)
     except: pass
 
-# --- CHAT STRÁNKA (S DESIGNEM) ---
+# --- CHAT STRÁNKA ---
 else:
-    st.markdown("<h3 style='text-align: center;'>🤖 Kvádr AI Asistent</h3>", unsafe_allow_html=True)
-    if st.button("🏠 ZPĚT NA PORTÁL"):
+    st.markdown("<h3 style='text-align: center; color: #58a6ff;'>🤖 AI Asistent</h3>", unsafe_allow_html=True)
+    if st.button("🏠 ZPĚT"):
         st.session_state.page = "Domů"
         st.rerun()
     
     st.write("---")
     
-    # Příklad designových zpráv
+    # Ukázka moderního chatu
     with st.chat_message("assistant"):
-        st.write("Dobrý den! Jsem váš Kvádr asistent. Jak vám mohu dnes pomoci?")
+        st.write("Jsem připraven. S čím vám mohu pomoci?")
     
-    if prompt := st.chat_input("Napište zprávu..."):
+    if prompt := st.chat_input("Zeptejte se na Kvádr..."):
         with st.chat_message("user"):
             st.write(prompt)
         with st.chat_message("assistant"):
-            st.write(f"Zpracovávám váš dotaz ohledně: {prompt}")
+            st.write(f"Rozumím, analyzuji dotaz: {prompt}")
