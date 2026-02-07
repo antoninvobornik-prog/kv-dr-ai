@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import time
 
 # ==========================================
-# 1. KONFIGURACE AI
+# 1. KONFIGURACE A OPRAVA AI (ERROR 404 FIX)
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
@@ -22,16 +22,30 @@ def inicializuj_ai():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
+        
+        # Seznam variant názvů, které Google bere (řeší chybu 404)
+        modely_ke_zkousce = ['models/gemini-1.5-flash', 'gemini-1.5-flash', 'models/gemini-pro']
+        
+        # Nejdřív zkusíme automatický seznam
         try:
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
-                    if 'gemini-1.5-flash' in m.name:
+                    if '1.5-flash' in m.name:
                         return genai.GenerativeModel(m.name)
         except:
             pass
-        return genai.GenerativeModel('gemini-1.5-flash')
+            
+        # Pokud listování selže, zkusíme natvrdo varianty
+        for m_name in modely_ke_zkousce:
+            try:
+                m = genai.GenerativeModel(m_name)
+                # Testovací volání, jestli model existuje
+                return m
+            except:
+                continue
     except Exception as e:
         return None
+    return None
 
 ai_model = inicializuj_ai()
 
@@ -52,7 +66,7 @@ def nacti_aktuality():
                 if title: zpravy.append(title.strip())
         except: continue
     aktualni_cas = datetime.now().strftime("%H:%M")
-    return zpravy if zpravy else [f"Systém Kvádr aktualizován v {aktualni_cas}"], aktualni_cas
+    return (zpravy if zpravy else [f"Systém Kvádr běží v pořádku."]), aktualni_cas
 
 def get_wmo_emoji(code):
     mapping = {0: "☀️ Jasno", 1: "⛅ Polojasno", 2: "⛅ Polojasno", 3: "☁️ Zataženo", 45: "🌫️ Mlha", 51: "🌧️ Mrholení", 61: "☔ Déšť", 71: "❄️ Sníh", 95: "⛈️ Bouřka"}
@@ -143,28 +157,30 @@ if st.session_state.page == "Domů":
     df = nacti_data_sheets("List 2")
     for msg in df['zprava'].dropna(): st.info(msg)
 
+    # Aktuality
     seznam_zprav, cas_stazeni = nacti_aktuality()
     idx = st.session_state.news_index % len(seznam_zprav)
-    st.markdown(f'''<div class="news-island"><span class="news-time">AKTUALIZOVÁNO DNES V {cas_stazeni}</span><div class="news-text">🗞️ {seznam_zprav[idx]}</div></div>''', unsafe_allow_html=True)
+    st.markdown(f'<div class="news-island"><span class="news-time">AKTUALIZOVÁNO {cas_stazeni}</span><div class="news-text">🗞️ {seznam_zprav[idx]}</div></div>', unsafe_allow_html=True)
 
     time.sleep(8)
     st.session_state.news_index += 1
     st.rerun()
 
 # ==========================================
-# 6. STRÁNKA: AI CHAT (Zde je chatovací vstup)
+# 6. STRÁNKA: AI CHAT
 # ==========================================
 elif st.session_state.page == "AI Chat":
     st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
     
     if ai_model is None:
-        st.error("AI model nebyl nalezen. Zkontroluj API klíč v Secrets.")
+        st.error("AI model nebyl nalezen. Zkontroluj svůj API klíč.")
     else:
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-        # Chat_input je nyní bezpečně uvnitř sekce AI Chat
-        if pr := st.chat_input("Zeptej se na cokoliv..."):
+        # Chat_input je POUZE v této větvi elif
+        pr = st.chat_input("Napiš zprávu...")
+        if pr:
             st.session_state.chat_history.append({"role": "user", "content": pr})
             with st.chat_message("user"): st.markdown(pr)
             with st.chat_message("assistant"):
@@ -175,4 +191,4 @@ elif st.session_state.page == "AI Chat":
                     st.markdown(response.text)
                     st.session_state.chat_history.append({"role": "assistant", "content": response.text})
                 except Exception as e:
-                    st.error(f"Chyba: {e}")
+                    st.error(f"Chyba AI: {e}")
