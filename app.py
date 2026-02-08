@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import time
 
 # ==========================================
-# 1. KONFIGURACE (S AUTOMATICKOU DETEKCÍ MODELU)
+# 1. KONFIGURACE
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
@@ -76,7 +76,7 @@ def nacti_data_sheets(nazev_listu):
     except: return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
-# 3. STYLY (S OPRAVOU PRO 2 ŘÁDKY)
+# 3. STYLY
 # ==========================================
 st.markdown("""
 <style>
@@ -85,14 +85,15 @@ st.markdown("""
     .weather-box-small { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); padding: 10px; border-radius: 10px; text-align: center; min-width: 120px; }
     
     .news-island {
-        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+        position: fixed; 
+        bottom: 30px; /* ZMĚNĚNO Z 20px NA 30px (+10) */
+        left: 50%; transform: translateX(-50%);
         background: rgba(15, 23, 42, 0.9); border: 1px solid #3b82f6;
         padding: 10px 20px; border-radius: 20px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         z-index: 1000; width: 90%; max-width: 500px;
         text-align: center; backdrop-filter: blur(10px);
     }
-    /* ÚPRAVA PRO 2 ŘÁDKY */
     .news-text { 
         color: #60a5fa; font-weight: bold; font-size: 13px; 
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; 
@@ -156,7 +157,7 @@ if st.session_state.page == "Domů":
     st.rerun()
 
 # ==========================================
-# 6. STRÁNKA: AI CHAT (SE SPINNEREM)
+# 6. STRÁNKA: AI CHAT
 # ==========================================
 elif st.session_state.page == "AI Chat":
     st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
@@ -168,7 +169,6 @@ elif st.session_state.page == "AI Chat":
         with st.chat_message("user"): st.markdown(pr)
         
         with st.chat_message("assistant"):
-            # KOLEČKO NAČÍTÁNÍ
             with st.spinner("Kvádr přemýšlí..."):
                 try:
                     df_ai = nacti_data_sheets("List 1")
@@ -178,7 +178,5 @@ elif st.session_state.page == "AI Chat":
                         response = model.generate_content(f"Jsi asistent projektu Kvádr. Info: {ctx}\nUživatel: {pr}")
                         st.markdown(response.text)
                         st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-                    else:
-                        st.error("Model nebyl nalezen.")
-                except: 
-                    st.error("Chyba AI.")
+                    else: st.error("Model nebyl nalezen.")
+                except: st.error("Chyba AI.")
