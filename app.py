@@ -8,12 +8,11 @@ from datetime import datetime, timedelta
 import time
 
 # ==========================================
-# 1. NASTAVENÍ A AI
+# 1. NASTAVENÍ
 # ==========================================
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
 if "page" not in st.session_state: st.session_state.page = "Domů"
-if "show_weather_details" not in st.session_state: st.session_state.show_weather_details = False
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_index" not in st.session_state: st.session_state.news_index = 0
 
@@ -30,7 +29,7 @@ def inicializuj_ai():
 ai_model = inicializuj_ai()
 
 # ==========================================
-# 2. FUNKCE (ZPRÁVY BEZ TEXTU AKTUALIZOVÁNO)
+# 2. FUNKCE
 # ==========================================
 @st.cache_data(ttl=300)
 def nacti_aktuality():
@@ -44,21 +43,6 @@ def nacti_aktuality():
     except: pass
     return (zpravy if zpravy else ["Systém Kvádr je online."]), datetime.now().strftime("%H:%M")
 
-def get_wmo_emoji(code):
-    mapping = {0: "☀️", 1: "⛅", 3: "☁️", 61: "☔", 71: "❄️"}
-    return mapping.get(code, "☁️")
-
-@st.cache_data(ttl=1800)
-def nacti_pocasi():
-    mesta = {"Nové Město n. M.": (50.344, 16.151), "Bělá": (50.534, 14.807), "Praha": (50.075, 14.437), "Hradec Králové": (50.210, 15.832)}
-    out = {}
-    for m, (lat, lon) in mesta.items():
-        try:
-            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&timezone=auto").json()
-            out[m] = {"teplota": f"{round(r['current']['temperature_2m'])}°C", "ikona": get_wmo_emoji(r['current']['weathercode'])}
-        except: out[m] = {"teplota": "--", "ikona": "⚠️"}
-    return out
-
 def nacti_sheet(list_name):
     try:
         url = st.secrets["GSHEET_URL"]
@@ -67,79 +51,75 @@ def nacti_sheet(list_name):
     except: return pd.DataFrame(columns=['zprava'])
 
 # ==========================================
-# 3. STYLY (MAXIMÁLNÍ PROSTOR PRO TEXT)
+# 3. STYLY (DVOUŘÁDKOVÝ DISPLEJ A POZICE)
 # ==========================================
 st.markdown("""
 <style>
     .stApp { background: radial-gradient(circle at center, #1a2c4e 0%, #070b14 100%); color: white; }
     
-    .news-island {
-        position: fixed; 
-        bottom: 130px; /* POSUNUTO VÝŠ NAD TLAČÍTKO */
-        left: 50%; 
-        transform: translateX(-50%);
-        background: rgba(15, 23, 42, 0.95); 
+    /* KONTEJNER PRO ZPRÁVY */
+    .news-container {
+        margin-top: 30px;
+        padding: 15px;
+        background: rgba(15, 23, 42, 0.8);
         border: 1px solid #3b82f6;
-        padding: 8px 15px; 
-        border-radius: 50px; 
-        width: 92%; 
-        max-width: 600px;
-        text-align: center; 
-        z-index: 1000; 
-        backdrop-filter: blur(15px);
-        white-space: nowrap; 
-        overflow: hidden;
+        border-radius: 15px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
+
     .news-text { 
         color: #60a5fa; 
         font-weight: bold; 
-        font-size: 13px; 
+        font-size: 15px;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 2; /* MAXIMÁLNĚ 2 ŘÁDKY */
+        -webkit-box-orient: vertical;
+        overflow: hidden; /* OŘÍZNE ZBYTEK */
     }
+
     .news-time { 
         color: #3b82f6; 
-        font-size: 10px; 
-        margin-right: 5px;
-        opacity: 0.6;
+        font-size: 11px; 
+        display: block;
+        margin-bottom: 5px;
+        opacity: 0.7;
     }
-    
-    .w-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
-    .w-box { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); padding: 8px; border-radius: 12px; text-align: center; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. OBSAH DOMOVSKÉ STRÁNKY
+# 4. OBSAH
 # ==========================================
 if st.session_state.page == "Domů":
-    st.markdown('<h2 style="text-align:center; margin-bottom:20px;">🏙️ KVÁDR PORTÁL</h2>', unsafe_allow_html=True)
+    st.markdown('<h2 style="text-align:center;">🏙️ KVÁDR PORTÁL</h2>', unsafe_allow_html=True)
     
-    # Počasí v mřížce 2x2 pro mobil
-    w_data = nacti_pocasi()
-    st.markdown('<div class="w-grid">', unsafe_allow_html=True)
-    for mesto, d in w_data.items():
-        st.markdown(f'<div class="w-box"><div style="font-size:10px; opacity:0.7;">{mesto}</div><div style="font-size:16px; font-weight:bold;">{d["ikona"]} {d["teplota"]}</div></div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    # Hlavní tlačítka (budou nahoře a vždy vidět)
     if st.button("💬 OTEVŘÍT KVÁDR AI CHAT", use_container_width=True, type="primary"):
         st.session_state.page = "AI Chat"; st.rerun()
         
-    st.button("📅 Zobrazit předpověď", use_container_width=True)
+    if st.button("📅 Zobrazit předpověď", use_container_width=True):
+        st.info("Předpověď se připravuje...")
 
-    # Oznámení
+    # Oznámení z tabulky
     df = nacti_sheet("List 2")
-    for msg in df['zprava'].dropna(): st.info(msg)
+    for msg in df['zprava'].dropna():
+        st.info(msg)
 
-    # ZPRÁVY (BEZ SLOVA AKTUALIZOVÁNO)
+    # ZPRÁVY DOLE - DVOUŘÁDKOVÉ
     zpravy, cas = nacti_aktuality()
     idx = st.session_state.news_index % len(zpravy)
+    
     st.markdown(f'''
-        <div class="news-island">
-            <span class="news-time">[{cas}]</span>
-            <span class="news-text">🗞️ {zpravy[idx]}</span>
+        <div class="news-container">
+            <span class="news-time">Aktualizováno: {cas}</span>
+            <div class="news-text">🗞️ {zpravy[idx]}</div>
         </div>
     ''', unsafe_allow_html=True)
     
-    time.sleep(7)
+    # Automatické přepínání
+    time.sleep(8)
     st.session_state.news_index += 1
     st.rerun()
 
