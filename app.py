@@ -29,12 +29,12 @@ MODEL_ID = najdi_model()
 # ==========================================
 # 2. POMOCNÉ FUNKCE
 # ==========================================
-def nacti_data_sheets(nazev_listu):
+def nacti_data_sheets(nazev_listu, header=0):
     try:
         base_url = st.secrets["GSHEET_URL"]
         sid = base_url.split("/d/")[1].split("/")[0]
         csv_url = f"https://docs.google.com/spreadsheets/d/{sid}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
-        return pd.read_csv(csv_url)
+        return pd.read_csv(csv_url, header=header)
     except: return pd.DataFrame()
 
 def get_wmo_description(code):
@@ -104,14 +104,16 @@ if st.session_state.page == "Domů":
     time.sleep(8); st.session_state.news_index += 1; st.rerun()
 
 # ==========================================
-# 6. STRÁNKA: INFO (DYNAMICKÉ PODLE TABULKY)
+# 6. STRÁNKA: INFO (OPRAVENO NAČÍTÁNÍ)
 # ==========================================
 elif st.session_state.page == "Info":
-    df_hist = nacti_data_sheets("List 3")
+    # header=None zajistí, že A1 nebude bráno jako název sloupce
+    df_hist = nacti_data_sheets("List 3", header=None)
     
     if not df_hist.empty:
-        # Hlavní nadpis z buňky A1
-        st.markdown(f'<h2 style="text-align:center;">🗺️ {df_hist.columns[0]}</h2>', unsafe_allow_html=True)
+        # Hlavní nadpis je teď opravdu buňka A1
+        hlavni_titulek = str(df_hist.iloc[0, 0])
+        st.markdown(f'<h2 style="text-align:center;">🗺️ {hlavni_titulek}</h2>', unsafe_allow_html=True)
         
         tab_pocasi, tab_obsah = st.tabs(["🌦️ Předpověď počasí", "📜 Informace"])
         
@@ -127,8 +129,8 @@ elif st.session_state.page == "Info":
                     st.divider()
 
         with tab_obsah:
-            # Procházení řádků: Sloupec A (index 0) = Nadpis, Sloupec B (index 1) = Obsah
-            for i in range(len(df_hist)):
+            # Procházíme od řádku 1 dále (řádek 0 je ten hlavní nadpis)
+            for i in range(1, len(df_hist)):
                 nadpis = str(df_hist.iloc[i, 0]).replace(".0", "").replace("nan", "")
                 obsah = str(df_hist.iloc[i, 1]).replace("nan", "")
                 
@@ -140,7 +142,7 @@ elif st.session_state.page == "Info":
                     </div>
                     """, unsafe_allow_html=True)
     else:
-        st.error("Chyba: List 3 nenalezen nebo je prázdný.")
+        st.error("Chyba: List 3 je prázdný.")
 
 # ==========================================
 # 7. STRÁNKA: AI CHAT
