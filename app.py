@@ -13,7 +13,6 @@ import time
 st.set_page_config(page_title="Kvádr AI", layout="wide")
 
 if "page" not in st.session_state: st.session_state.page = "Domů"
-if "show_weather_details" not in st.session_state: st.session_state.show_weather_details = False
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_index" not in st.session_state: st.session_state.news_index = 0
 
@@ -23,14 +22,20 @@ def najdi_model():
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
         dostupne = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         return next((n for n in dostupne if '1.5-flash' in n), dostupne[0])
-    except:
-        return None
+    except: return None
 
 MODEL_ID = najdi_model()
 
 # ==========================================
 # 2. POMOCNÉ FUNKCE
 # ==========================================
+def nacti_data_sheets(nazev_listu):
+    try:
+        base_url = st.secrets["GSHEET_URL"]
+        sid = base_url.split("/d/")[1].split("/")[0]
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sid}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
+        return pd.read_csv(csv_url)
+    except: return pd.DataFrame(columns=['zprava', 'rok', 'udalost']) # Záložní sloupce
 
 @st.cache_data(ttl=600)
 def nacti_aktuality():
@@ -41,39 +46,24 @@ def nacti_aktuality():
             res = requests.get(url, timeout=5)
             root = ET.fromstring(res.content)
             for item in root.findall('.//item')[:5]:
-                title = item.find('title').text
-                zpravy.append(title)
+                zpravy.append(item.find('title').text)
         except: continue
-    return zpravy if zpravy else ["Kvádr AI: Připraven k práci.", "Sledujte aktuální dění."]
-
-SOURADNICE = {"Nové Město n. M.": (50.344, 16.151), "Bělá": (50.534, 14.807), "Praha": (50.075, 14.437), "Hradec Králové": (50.210, 15.832)}
-
-def get_wmo_emoji(code):
-    mapping = {0: "☀️ Jasno", 1: "⛅ Polojasno", 2: "⛅ Polojasno", 3: "☁️ Zataženo", 45: "🌫️ Mlha", 51: "🌧️ Mrholení", 61: "☔ Déšť", 71: "❄️ Sníh", 95: "⛈️ Bouřka"}
-    return mapping.get(code, "☁️ Zataženo")
+    return zpravy if zpravy else ["Kvádr AI: Systém připraven."]
 
 @st.cache_data(ttl=1800)
 def nacti_kompletni_pocasi():
-    data_output = {}
-    for mesto, (lat, lon) in SOURADNICE.items():
+    mesta = {"Nové Město n. M.": (50.344, 16.151), "Bělá": (50.534, 14.807), "Praha": (50.075, 14.437), "Hradec Králové": (50.210, 15.832)}
+    output = {}
+    for m, (lat, lon) in mesta.items():
         try:
-            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto"
-            res = requests.get(url, timeout=5).json()
-            data_output[mesto] = {
-                "aktualni_teplota": f"{round(res['current']['temperature_2m'])}°C",
-                "aktualni_ikona": get_wmo_emoji(res['current']['weathercode']).split(" ")[0],
-                "predpoved": [{"den": (datetime.now() + timedelta(days=i)).strftime("%d.%m."), "pocasi": get_wmo_emoji(res['daily']['weathercode'][i]), "teplota": f"{round(res['daily']['temperature_2m_min'][i])}°/{round(res['daily']['temperature_2m_max'][i])}°"} for i in range(7)]
+            res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto", timeout=5).json()
+            output[m] = {
+                "teplota": f"{round(res['current']['temperature_2m'])}°C",
+                "ikona": "☀️" if res['current']['weathercode'] < 3 else "☁️",
+                "predpoved": [{"den": (datetime.now() + timedelta(days=i)).strftime("%d.%m."), "teplota": f"{round(res['daily']['temperature_2m_min'][i])}°/{round(res['daily']['temperature_2m_max'][i])}°"} for i in range(5)]
             }
-        except: data_output[mesto] = {"aktualni_teplota": "--", "aktualni_ikona": "⚠️", "predpoved": []}
-    return data_output
-
-def nacti_data_sheets(nazev_listu):
-    try:
-        base_url = st.secrets["GSHEET_URL"]
-        sheet_id = base_url.split("/d/")[1].split("/")[0]
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
-        return pd.read_csv(csv_url)
-    except: return pd.DataFrame(columns=['zprava'])
+        except: output[m] = {"teplota": "--", "ikona": "⚠️", "predpoved": []}
+    return output
 
 # ==========================================
 # 3. STYLY
@@ -81,24 +71,14 @@ def nacti_data_sheets(nazev_listu):
 st.markdown("""
 <style>
     .stApp { background: radial-gradient(circle at center, #1a2c4e 0%, #070b14 100%); color: white; }
-    .weather-grid-top { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 15px; }
-    .weather-box-small { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); padding: 10px; border-radius: 10px; text-align: center; min-width: 120px; }
-    
     .news-island {
-        position: fixed; 
-        bottom: 30px; /* ZMĚNĚNO Z 20px NA 30px (+10) */
-        left: 50%; transform: translateX(-50%);
+        position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
         background: rgba(15, 23, 42, 0.9); border: 1px solid #3b82f6;
-        padding: 10px 20px; border-radius: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        z-index: 1000; width: 90%; max-width: 500px;
+        padding: 10px 20px; border-radius: 20px; z-index: 1000; width: 90%; max-width: 500px;
         text-align: center; backdrop-filter: blur(10px);
     }
-    .news-text { 
-        color: #60a5fa; font-weight: bold; font-size: 13px; 
-        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; 
-        overflow: hidden; line-height: 1.3;
-    }
+    .news-text { color: #60a5fa; font-weight: bold; font-size: 13px; }
+    .timeline-card { background: rgba(255,255,255,0.05); border-left: 3px solid #3b82f6; padding: 15px; margin: 10px 0; border-radius: 0 10px 10px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -108,75 +88,82 @@ st.markdown("""
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
     if st.session_state.page == "Domů":
+        if st.button("🗺️ PROZKOUMAT KVÁDR SVĚT", use_container_width=True, type="secondary"):
+            st.session_state.page = "Info"; st.rerun()
         if st.button("💬 OTEVŘÍT KVÁDR AI CHAT", use_container_width=True, type="primary"):
             st.session_state.page = "AI Chat"; st.rerun()
     else:
-        if st.button("🏠 ZPĚT NA PORTÁL", use_container_width=True):
+        if st.button("🏠 ZPĚT NA ÚVOD", use_container_width=True):
             st.session_state.page = "Domů"; st.rerun()
 
 # ==========================================
-# 5. STRÁNKA: DOMŮ
+# 5. STRÁNKA: DOMŮ (ZPRÁVY + OZNÁMENÍ)
 # ==========================================
 if st.session_state.page == "Domů":
     st.markdown('<h1 style="text-align:center;">🏙️ KVÁDR PORTÁL</h1>', unsafe_allow_html=True)
     
-    weather_data = nacti_kompletni_pocasi()
-    h_html = '<div class="weather-grid-top">'
-    for m, d in weather_data.items():
-        h_html += f'<div class="weather-box-small"><div style="font-size:11px; opacity:0.7;">{m}</div><div style="font-size:18px; font-weight:bold;">{d["aktualni_ikona"]} {d["aktualni_teplota"]}</div></div>'
-    h_html += '</div>'
-    st.markdown(h_html, unsafe_allow_html=True)
+    # Oznámení z Listu 2
+    df_oznameni = nacti_data_sheets("List 2")
+    for msg in df_oznameni['zprava'].dropna(): st.info(msg)
 
-    if st.button("📅 " + ("Zavřít detail" if st.session_state.show_weather_details else "Zobrazit předpověď"), use_container_width=True):
-        st.session_state.show_weather_details = not st.session_state.show_weather_details
-        st.rerun()
-
-    if st.session_state.show_weather_details:
-        cols = st.columns(2)
-        for i, (mesto, data) in enumerate(weather_data.items()):
-            with cols[i % 2]:
-                rows = "".join([f'<div style="display:flex; justify-content:space-between; font-size:13px; border-bottom:1px solid rgba(255,255,255,0.1); padding:4px 0;"><span>{f["den"]}</span><span>{f["pocasi"]}</span><b>{f["teplota"]}</b></div>' for f in data['predpoved']])
-                st.markdown(f'<div style="background:rgba(15,23,42,0.7); padding:10px; border-radius:10px; margin-bottom:10px;"><b style="color:#60a5fa;">{mesto}</b>{rows}</div>', unsafe_allow_html=True)
-
-    st.markdown('<h3 style="text-align:center; margin-top:20px;">📢 Oznámení</h3>', unsafe_allow_html=True)
-    df = nacti_data_sheets("List 2")
-    for msg in df['zprava'].dropna(): st.info(msg)
-
+    # Zpravodajský ostrůvek (+10 výška)
     seznam_zprav = nacti_aktuality()
     idx = st.session_state.news_index % len(seznam_zprav)
-    aktualni_titulek = seznam_zprav[idx]
-
-    st.markdown(f"""
-        <div class="news-island">
-            <div class="news-text">🗞️ {aktualni_titulek}</div>
-        </div>
-    """, unsafe_allow_html=True)
-
+    st.markdown(f'<div class="news-island"><div class="news-text">🗞️ {seznam_zprav[idx]}</div></div>', unsafe_allow_html=True)
+    
     time.sleep(8)
     st.session_state.news_index += 1
     st.rerun()
 
 # ==========================================
-# 6. STRÁNKA: AI CHAT
+# 6. STRÁNKA: INFO (POČASÍ + HISTORIE Z LISTU 3)
+# ==========================================
+elif st.session_state.page == "Info":
+    st.markdown('<h2 style="text-align:center;">⚡ Kvádr Hub</h2>', unsafe_allow_html=True)
+    
+    tab_pocasi, tab_historie = st.tabs(["🌦️ Předpověď počasí", "📜 Historie a Sezóny"])
+    
+    with tab_pocasi:
+        w_data = nacti_kompletni_pocasi()
+        cols = st.columns(2)
+        for i, (mesto, d) in enumerate(w_data.items()):
+            with cols[i % 2]:
+                st.markdown(f"### {d['ikona']} {mesto}: {d['teplota']}")
+                for f in d['predpoved']:
+                    st.write(f"**{f['den']}**: {f['teplota']}")
+                st.divider()
+
+    with tab_historie:
+        df_hist = nacti_data_sheets("List 3")
+        # Předpokládáme sloupce 'rok' a 'udalost' v Listu 3
+        if not df_hist.empty:
+            for _, row in df_hist.iterrows():
+                st.markdown(f"""
+                <div class="timeline-card">
+                    <span style="color:#3b82f6; font-weight:bold;">{row['rok']}</span><br>
+                    {row['udalost']}
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.warning("V Listu 3 nebyly nalezeny žádné historické záznamy.")
+
+# ==========================================
+# 7. STRÁNKA: AI CHAT
 # ==========================================
 elif st.session_state.page == "AI Chat":
     st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if pr := st.chat_input("Zeptej se na projekt Kvádr..."):
+    if pr := st.chat_input("Zeptej se na cokoliv..."):
         st.session_state.chat_history.append({"role": "user", "content": pr})
         with st.chat_message("user"): st.markdown(pr)
-        
         with st.chat_message("assistant"):
-            with st.spinner("Kvádr přemýšlí..."):
-                try:
-                    df_ai = nacti_data_sheets("List 1")
-                    ctx = " ".join(df_ai['zprava'].astype(str).tolist())
-                    if MODEL_ID:
-                        model = genai.GenerativeModel(MODEL_ID)
-                        response = model.generate_content(f"Jsi asistent projektu Kvádr. Info: {ctx}\nUživatel: {pr}")
-                        st.markdown(response.text)
-                        st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-                    else: st.error("Model nebyl nalezen.")
-                except: st.error("Chyba AI.")
+            try:
+                df_ai = nacti_data_sheets("List 1")
+                ctx = " ".join(df_ai['zprava'].astype(str).tolist())
+                model = genai.GenerativeModel(MODEL_ID)
+                res = model.generate_content(f"Jsi asistent Kvádru. Kontext: {ctx}\nUživatel: {pr}")
+                st.markdown(res.text)
+                st.session_state.chat_history.append({"role": "assistant", "content": res.text})
+            except: st.error("AI momentálně mimo provoz.")
