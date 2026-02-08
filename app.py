@@ -148,4 +148,52 @@ elif st.session_state.page == "AI Chat":
             model = genai.GenerativeModel(MODEL_ID)
             res = model.generate_content(f"Jsi asistent Kvádru. Kontext: {ctx}\nUživatel: {pr}")
             st.markdown(res.text)
-            st.session_state.chat_history.append({"role": "assistant", "content": res.text})
+            st.session_state.chat_history.append({"role": "assistant", "content": res.text})# ... 
+
+elif st.session_state.page == "Info":
+    df_hist = nacti_data_sheets("List 3")
+    
+    if not df_hist.empty:
+        # 1. Hlavní nadpis stránky z buňky A1
+        hlavni_nadpis = df_hist.columns[0]
+        st.markdown(f'<h2 style="text-align:center;">🗺️ {hlavni_nadpis}</h2>', unsafe_allow_html=True)
+        
+        tab_pocasi, tab_historie = st.tabs(["🌦️ Předpověď počasí", "📜 Informace a Historie"])
+        
+        with tab_pocasi:
+            w_data = nacti_kompletni_pocasi()
+            cols = st.columns(2)
+            for i, (mesto, d) in enumerate(w_data.items()):
+                with cols[i % 2]:
+                    st.markdown(f"### {d['ikona']} {mesto}: {d['teplota']}")
+                    st.write(f"*Aktuální stav: {d['stav']}*")
+                    for f in d['predpoved']:
+                        st.write(f"**{f['den']}**: {f['stav']} | {f['teplota']}")
+                    st.divider()
+
+        with tab_historie:
+            # 2. Každý řádek má nadpis podle sloupce A
+            # Přejmenujeme sloupce pro snadnou práci v kódu
+            df_hist.columns = ['nadpis_radku', 'obsah_radku']
+            df_hist = df_hist.fillna("")
+            
+            for _, row in df_hist.iterrows():
+                # Vyčištění nadpisu (odstranění .0 u čísel/roků)
+                nadpis = str(row['nadpis_radku']).replace(".0", "").replace("nan", "")
+                obsah = str(row['obsah_radku'])
+                
+                if nadpis or obsah:
+                    st.markdown(f"""
+                    <div style="background: rgba(255,255,255,0.05); 
+                                padding: 20px; 
+                                border-radius: 15px; 
+                                border-left: 5px solid #3b82f6; 
+                                margin-bottom: 20px;">
+                        <h3 style="color: #60a5fa; margin-top: 0;">{nadpis}</h3>
+                        <div style="color: #e2e8f0; line-height: 1.6;">{obsah}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    else:
+        st.warning("Tabulka List 3 je prázdná.")
+
+# ... (zbytek kódu pro AI Chat zůstává stejný)
