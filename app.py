@@ -35,7 +35,7 @@ def nacti_data_sheets(nazev_listu):
         sid = base_url.split("/d/")[1].split("/")[0]
         csv_url = f"https://docs.google.com/spreadsheets/d/{sid}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(nazev_listu)}"
         return pd.read_csv(csv_url)
-    except: return pd.DataFrame(columns=['rok', 'udalost', 'zprava'])
+    except: return pd.DataFrame()
 
 def get_wmo_description(code):
     mapping = {0: "Jasno", 1: "Převážně jasno", 2: "Polojasno", 3: "Zataženo", 45: "Mlha", 61: "Slabý déšť", 71: "Sněžení", 95: "Bouřka"}
@@ -57,14 +57,16 @@ def nacti_kompletni_pocasi():
         except: output[m] = {"teplota": "--", "stav": "Nenalezeno", "ikona": "⚠️", "predpoved": []}
     return output
 
-# ... (Styly CSS zůstávají stejné)
+# ==========================================
+# 3. STYLY (CSS)
+# ==========================================
 st.markdown("""
 <style>
     .stApp { background: radial-gradient(circle at center, #1a2c4e 0%, #070b14 100%); color: white; }
     .news-island { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.9); border: 1px solid #3b82f6; padding: 10px 20px; border-radius: 20px; z-index: 1000; width: 90%; max-width: 500px; text-align: center; backdrop-filter: blur(10px); }
     .news-text { color: #60a5fa; font-weight: bold; font-size: 13px; }
-    .timeline-card { background: rgba(255,255,255,0.05); border-left: 4px solid #3b82f6; padding: 15px; margin: 12px 0; border-radius: 0 12px 12px 0; }
-    .year-label { color: #3b82f6; font-weight: 800; }
+    .info-card { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; border-left: 5px solid #3b82f6; margin-bottom: 20px; }
+    .info-header { color: #60a5fa; margin-top: 0; font-size: 1.2rem; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -88,15 +90,13 @@ with c2:
 if st.session_state.page == "Domů":
     st.markdown('<h1 style="text-align:center;">🏙️ KVÁDR PORTÁL</h1>', unsafe_allow_html=True)
     df_oznameni = nacti_data_sheets("List 2")
-    if 'zprava' in df_oznameni.columns:
+    if not df_oznameni.empty and 'zprava' in df_oznameni.columns:
         for msg in df_oznameni['zprava'].dropna(): st.info(msg)
     
-    # Zpravodajská lišta
     try:
-        zpravy = []
         res = requests.get("https://ct24.ceskatelevize.cz/rss/hlavni-zpravy", timeout=5)
         root = ET.fromstring(res.content)
-        for item in root.findall('.//item')[:5]: zpravy.append(item.find('title').text)
+        zpravy = [item.find('title').text for item in root.findall('.//item')[:5]]
         idx = st.session_state.news_index % len(zpravy)
         st.markdown(f'<div class="news-island"><div class="news-text">🗞️ {zpravy[idx]}</div></div>', unsafe_allow_html=True)
     except: pass
@@ -104,61 +104,16 @@ if st.session_state.page == "Domů":
     time.sleep(8); st.session_state.news_index += 1; st.rerun()
 
 # ==========================================
-# 6. STRÁNKA: INFO (PŘEJMENOVÁNO)
+# 6. STRÁNKA: INFO (DYNAMICKÉ PODLE TABULKY)
 # ==========================================
-elif st.session_state.page == "Info":
-    st.markdown('<h2 style="text-align:center;">🗺️ Kvádr Info & Počasí</h2>', unsafe_allow_html=True)
-    tab_pocasi, tab_historie = st.tabs(["🌦️ Předpověď počasí", "📜 Historie a Sezóny"])
-    
-    with tab_pocasi:
-        w_data = nacti_kompletni_pocasi()
-        cols = st.columns(2)
-        for i, (mesto, d) in enumerate(w_data.items()):
-            with cols[i % 2]:
-                st.markdown(f"### {d['ikona']} {mesto}: {d['teplota']}")
-                st.write(f"*Aktuální stav: {d['stav']}*")
-                for f in d['predpoved']:
-                    st.write(f"**{f['den']}**: {f['stav']} | {f['teplota']}")
-                st.divider()
-
-    with tab_historie:
-        df_hist = nacti_data_sheets("List 3")
-        if not df_hist.empty:
-            # Čištění zobrazení: odstranění nan a .0
-            df_hist = df_hist.fillna("")
-            for _, row in df_hist.iterrows():
-                rok = str(row['rok']).replace(".0", "")
-                if rok == "nan": rok = ""
-                st.markdown(f'<div class="timeline-card"><div class="year-label">{rok}</div>{row["udalost"]}</div>', unsafe_allow_html=True)
-
-# ==========================================
-# 7. STRÁNKA: AI CHAT
-# ==========================================
-elif st.session_state.page == "AI Chat":
-    st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
-    # (Chat kód zůstává beze změny...)
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]): st.markdown(msg["content"])
-    if pr := st.chat_input("Zeptej se..."):
-        st.session_state.chat_history.append({"role": "user", "content": pr})
-        with st.chat_message("user"): st.markdown(pr)
-        with st.chat_message("assistant"):
-            df_ai = nacti_data_sheets("List 1")
-            ctx = " ".join(df_ai['zprava'].astype(str).tolist())
-            model = genai.GenerativeModel(MODEL_ID)
-            res = model.generate_content(f"Jsi asistent Kvádru. Kontext: {ctx}\nUživatel: {pr}")
-            st.markdown(res.text)
-            st.session_state.chat_history.append({"role": "assistant", "content": res.text})# ... 
-
 elif st.session_state.page == "Info":
     df_hist = nacti_data_sheets("List 3")
     
     if not df_hist.empty:
-        # 1. Hlavní nadpis stránky z buňky A1
-        hlavni_nadpis = df_hist.columns[0]
-        st.markdown(f'<h2 style="text-align:center;">🗺️ {hlavni_nadpis}</h2>', unsafe_allow_html=True)
+        # Hlavní nadpis z buňky A1
+        st.markdown(f'<h2 style="text-align:center;">🗺️ {df_hist.columns[0]}</h2>', unsafe_allow_html=True)
         
-        tab_pocasi, tab_historie = st.tabs(["🌦️ Předpověď počasí", "📜 Informace a Historie"])
+        tab_pocasi, tab_obsah = st.tabs(["🌦️ Předpověď počasí", "📜 Informace"])
         
         with tab_pocasi:
             w_data = nacti_kompletni_pocasi()
@@ -166,34 +121,41 @@ elif st.session_state.page == "Info":
             for i, (mesto, d) in enumerate(w_data.items()):
                 with cols[i % 2]:
                     st.markdown(f"### {d['ikona']} {mesto}: {d['teplota']}")
-                    st.write(f"*Aktuální stav: {d['stav']}*")
+                    st.write(f"*Stav: {d['stav']}*")
                     for f in d['predpoved']:
                         st.write(f"**{f['den']}**: {f['stav']} | {f['teplota']}")
                     st.divider()
 
-        with tab_historie:
-            # 2. Každý řádek má nadpis podle sloupce A
-            # Přejmenujeme sloupce pro snadnou práci v kódu
-            df_hist.columns = ['nadpis_radku', 'obsah_radku']
-            df_hist = df_hist.fillna("")
-            
-            for _, row in df_hist.iterrows():
-                # Vyčištění nadpisu (odstranění .0 u čísel/roků)
-                nadpis = str(row['nadpis_radku']).replace(".0", "").replace("nan", "")
-                obsah = str(row['obsah_radku'])
+        with tab_obsah:
+            # Procházení řádků: Sloupec A (index 0) = Nadpis, Sloupec B (index 1) = Obsah
+            for i in range(len(df_hist)):
+                nadpis = str(df_hist.iloc[i, 0]).replace(".0", "").replace("nan", "")
+                obsah = str(df_hist.iloc[i, 1]).replace("nan", "")
                 
                 if nadpis or obsah:
                     st.markdown(f"""
-                    <div style="background: rgba(255,255,255,0.05); 
-                                padding: 20px; 
-                                border-radius: 15px; 
-                                border-left: 5px solid #3b82f6; 
-                                margin-bottom: 20px;">
-                        <h3 style="color: #60a5fa; margin-top: 0;">{nadpis}</h3>
+                    <div class="info-card">
+                        <div class="info-header">{nadpis}</div>
                         <div style="color: #e2e8f0; line-height: 1.6;">{obsah}</div>
                     </div>
                     """, unsafe_allow_html=True)
     else:
-        st.warning("Tabulka List 3 je prázdná.")
+        st.error("Chyba: List 3 nenalezen nebo je prázdný.")
 
-# ... (zbytek kódu pro AI Chat zůstává stejný)
+# ==========================================
+# 7. STRÁNKA: AI CHAT
+# ==========================================
+elif st.session_state.page == "AI Chat":
+    st.markdown('<h2 style="text-align:center;">💬 Kvádr AI</h2>', unsafe_allow_html=True)
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]): st.markdown(msg["content"])
+    if pr := st.chat_input("Zeptej se..."):
+        st.session_state.chat_history.append({"role": "user", "content": pr})
+        with st.chat_message("user"): st.markdown(pr)
+        with st.chat_message("assistant"):
+            df_ai = nacti_data_sheets("List 1")
+            ctx = " ".join(df_ai.iloc[:, 0].astype(str).tolist()) if not df_ai.empty else ""
+            model = genai.GenerativeModel(MODEL_ID)
+            res = model.generate_content(f"Jsi asistent Kvádru. Kontext: {ctx}\nUživatel: {pr}")
+            st.markdown(res.text)
+            st.session_state.chat_history.append({"role": "assistant", "content": res.text})
